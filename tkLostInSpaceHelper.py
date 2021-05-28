@@ -3,6 +3,7 @@
 from functools import partial 
 import maya.cmds as cmds
 import maya.mel as mel
+import random as random
 
 global tk_edgeMemory
 global tk_counter
@@ -157,12 +158,12 @@ def cOffsetCVs(*args):
             cmds.setAttr(shp + '.controlPoints[' + str(i) + '].zValue', vtxPosList[i][2] + offsetZ)
 
 
-def cSetOffsetValue(field, *args):
+def cResetField(field, value, *args):
     """
-    reset field to 0
+    reset field to value
     """
 
-    cmds.floatField(field, v=0, e=1)
+    cmds.floatField(field, v=value, e=1)
 
 
 def cIncrease(field, value, *args):
@@ -237,7 +238,7 @@ def cAddAttrib(selection, attrType, attrName, min, max, dv, state, *args):
 
     defaultValueList = ['ringScale']
 
-    print 'selection:' + str(selection)
+    # print 'selection:' + str(selection)
     attrExist = maya.cmds.attributeQuery(attrName, node=selection, exists=True)
     
     if state == 'remove':  # delete attribute
@@ -279,9 +280,11 @@ def cSetAttr(field, *args):
         attrQuery = cmds.channelBox('mainChannelBox', q=1, sha=1)
 
     if attrQuery:
-        for attr in attrQuery:
-            attrTxt += attr
-            attrTxt += ' '
+        for i in range(0, len(attrQuery), 1):
+            attrTxt += attrQuery[i]
+            if i < len(attrQuery)-1:
+                attrTxt += ' '
+
     cmds.textField(field, tx=attrTxt, e=1)
 
 
@@ -385,8 +388,8 @@ def tkGetCenter(object, type, output, *args):
         jnt
     """
 
-    print 'tkGetCenter...'
-    print object
+    # print 'tkGetCenter...'
+    # print object
 
     points = []
     cvPosList = []
@@ -422,7 +425,7 @@ def tkGetCenter(object, type, output, *args):
             posX += pos[0]
             posY += pos[1]
             posZ += pos[2]
-            print pos
+            # print pos
             cvPosList.append(pos)
     
     amount = len(cvPosList)
@@ -447,8 +450,8 @@ def tkGetCenter(object, type, output, *args):
         jnt = cmds.joint(p=(0, 0, 0), n=str(object) + '_center_jnt')
         grp = cmds.group(empty=1, n=object + '_center_grp')
         cmds.parent(jnt, grp)
-        print 'centerPos:'
-        print centerPos
+        # print 'centerPos:'
+        # print centerPos
         cmds.setAttr(grp + '.tx', centerPos[0])
         cmds.setAttr(grp + '.ty', centerPos[1])
         cmds.setAttr(grp + '.tz', centerPos[2])
@@ -467,7 +470,7 @@ def cMultiParent(*args):
 
     if num%2 == 0:
         for i in range(0, num/2, 1):
-            print str(mySel[i]) + ' --> ' + str(mySel[i+(num/2)])
+            # print str(mySel[i]) + ' --> ' + str(mySel[i+(num/2)])
             cmds.parent(mySel[i], mySel[i+(num/2)])
 
 
@@ -554,10 +557,6 @@ def cCutAsStart(*args):
             if form == 2:
                 numCVs -= degree            
 
-
-            print 'degree:'
-            print degree
-
             cmds.select(clear=1)
             for i in range(0, numCVs, 1):
                 cvList.append(cmds.xform(crv + '.cv[' + str(i) + ']', q=1, translation=1, ws=1))
@@ -588,7 +587,6 @@ def cCutAsStart(*args):
             cmd = cmd[0:-3]
             cmd += '])'
 
-            print cmd
             eval(cmd)
 
             cmds.delete(CRV)
@@ -652,17 +650,12 @@ def cBonesOnCurve(type, *args):
     cvPosList = []
     mySel = []
     number = cmds.intField('fBonesNumber', q=1, v=1)
-    print 'number:'
-    print number
 
     mySel = cmds.ls(os=1, fl=1)
 
-    print 'mySel:'
-    print mySel
     # mySel = cmds.ls(sl=1)
 
     for CRV in mySel:
-        print CRV
         crv = cmds.listRelatives(CRV, s=1)[0] 
         degree = cmds.getAttr(crv + ".degree")
         spans = cmds.getAttr(crv + ".spans")
@@ -809,13 +802,11 @@ def cJntsToChain(type, *args):
     for sel in mySel:
         if cmds.objectType(sel, isType='joint'):
             jntList.append(sel)
-            print 'found'
         jntsFound = cmds.listRelatives(sel, ad=1, type='joint')
         if jntsFound:
             for jnt in jntsFound:
                 jntList.append(jnt)
 
-    print jntList
     numJnts = len(jntList)
 
     if type == 'parent':
@@ -843,10 +834,8 @@ def cObjToChain(type, *args):
     numSel = len(mySel)
 
     if type == 'new':
-        print 'new'
         cmds.select(clear=1)
         for i in range(0, numSel, 1):
-            print mySel[i]
             pos = cmds.xform(mySel[i], translation=1, ws=1, q=1)
             newChainList.append(cmds.joint(p=(pos[0], pos[1], pos[2]), n='chain_' + str(i) + '_jnt'))
 
@@ -922,8 +911,6 @@ def cJntsFromSelection(parent, *args):
         jntList.append(jnt)
      
     # orient joints chain! 
-    print 'jntList:'
-    print jntList
 
     cmds.select(clear=1)
     for i in range(0, len(mySel)-1, 1):
@@ -946,11 +933,9 @@ def cAdjustPivot(*args):
     
     if pvLoc:
         pos = cmds.xform(pvLoc, translation=1, ws=1, q=1)
-        print pos
 
     for jnt in mySel:
         curPos = cmds.xform(jnt, translation=1, ws=1, q=1)
-        print curPos
 
         if x == 0:
             pos[0] = curPos[0]
@@ -1011,7 +996,6 @@ def cMakeCtrl(sel, ctrlShape, *args):
         orient = [0, 0, 1]
 
     pos = cmds.xform(sel, translation=1, ws=1, q=1)
-    print pos
 
     if ctrlShape == 'cube':
         CON = cmds.curve(n=sel + '_con', d=1, p=[(5, 5, 5), (5, 5, -5), (-5, 5, -5), (-5, -5, -5), (5, -5, -5), (5, 5, -5), (-5, 5, -5), (-5, 5, 5), (5, 5, 5), (5, -5, 5), (5, -5,-5), (-5, -5, -5), (-5, -5, 5), (5, -5, 5), (-5, -5, 5), (-5, 5, 5)], k=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
@@ -1314,6 +1298,8 @@ def cSelectMatching(field, *args):
         cmds.select(str(sp[0]) + '*' + str(sp[2]), r=1)
 
 
+
+
 def cWriteExpr(action, *args):
     """
     write wave expression
@@ -1336,11 +1322,10 @@ def cWriteExpr(action, *args):
         exp3 = '" -o loop_1_crv_center_grp_con -ae 1 -uc all -n "exWave_' + str(driver) + '";'
 
         for i in range(start, end, 1):
-            cAddAttrib(driven[i], 'float', 'wEnv', 1, 1, 1, 'add')
+            cAddAttrib(driven[i], 'float', 'wEnv', 0, 1, 1, 'add')
             cAddAttrib(driven[i], 'float', 'frameOffset', 'x','x', 0, 'add')
 
-            # exp2 += str(driven[i]) + '.translateX = ' + str(driver) + '.wAmplitude * ' + str(driver) + '.wEnv * ' + str(driven[i]) + '.wEnv * sin((frame + ' + str(driven[i]) + '.frameOffset) * ' + str(driver) + '.wSpeed);'
-            exp2 += str(driven[i]) + '.translateX = ' + str(driver) + '.wAmplitude * ' + str(driver) + '.wEnv * ' + str(driven[i]) + '.wEnv * sin((frame + ' + str(driver) + '.frameOffset + ' + str(driven[i]) + '.frameOffset) * ' + str(driver) + '.wSpeed);'
+            exp2 += str(driven[i]) + '_OFF.translateX = ' + str(driver) + '.wAmplitude * ' + str(driver) + '.wEnv * ' + str(driven[i]) + '.wEnv * sin((frame + ' + str(driver) + '.frameOffset + ' + str(driven[i]) + '.frameOffset) * ' + str(driver) + '.wSpeed);\\n'
 
         exp = exp1 + exp2 + exp3
 
@@ -1367,12 +1352,74 @@ def cWriteExprBatch(action, *args):
     for sel in selection:
         cmds.select(sel, r=1)
         cFillField('tfDriver')
+        cSelectMatching('tfCheck')
+        cWriteExpr(action)
 
-        if action == 'write':
-            cWriteExpr('write')
+    cmds.select(selection, r=1)
 
-        if action =='delete':
-            cWriteExpr('delete')
+
+
+def cRandom(action, incrPerGuide, *args):
+    """
+    Randomize attributes
+
+    Input
+        action:         increment
+                        random
+        incrPerGuide:  increment per mainGroup
+
+    """
+
+    print 'incrPerGuide: ' + str(incrPerGuide)
+
+    mySel = cmds.ls(os=1)
+    attributes = cmds.textField('tfAttrChange', tx=1, q=1).split(' ')
+    fromValue = cmds.floatField('fFromValue', v=1, q=1)
+    incrValue = cmds.floatField('fIncrement', v=1, q=1)
+
+    newValue = fromValue + incrPerGuide
+    if action == 'increment':
+        print 'increment...'
+        for sel in mySel:
+            newValue = newValue + incrValue
+            for i in range(0, len(attributes),1):
+                print 'newValue: ' + str(newValue)
+                cmds.setAttr(sel + '.' + attributes[i], newValue)
+
+    if action == 'random':
+        print 'random...'
+        for sel in mySel:
+            for i in range(0, len(attributes),1):
+                newValue = random.uniform(fromValue, incrValue)
+                print 'sel: ' + str(sel)
+                print 'newValue: ' + str(newValue)
+                cmds.setAttr(sel + '.' + attributes[i], newValue)
+
+
+def cRandomBatch(action, *args):
+    """
+    batch randomize values for selected objects
+
+    """
+
+    selection = cmds.ls(os=1)
+    incrPerGuide = cmds.floatField('fIncrementPerObj', v=1, q=1)
+    newIncr = incrPerGuide
+
+    for sel in selection:
+        cmds.select(sel, r=1)
+        cFillField('tfDriver')
+        cSelectMatching('tfCheck')
+        cRandom(action, newIncr)
+
+
+        newIncr += incrPerGuide
+    
+    cmds.select(selection, r=1)
+
+
+
+
 
 
 
@@ -1518,17 +1565,17 @@ cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=13, cw=[(1,25), (2,25), (3,25), (4,50), (5,25), (6,25), (7,25), (8,50), (9,25), (10,25), (11,25), (12,50), (13,65)], bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.button(l='-', c=partial(cIncrease, 'fOffsetX', -1))
 cmds.button(l='+', c=partial(cIncrease, 'fOffsetX', 1))
-cmds.button(l='X', c=partial(cSetOffsetValue, 'fOffsetX'))
+cmds.button(l='X', c=partial(cResetField, 'fOffsetX', 0))
 cmds.floatField('fOffsetX', pre=1, v=1)
 
 cmds.button(l='-', c=partial(cIncrease, 'fOffsetY', -1), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='+', c=partial(cIncrease, 'fOffsetY', +1), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='Y', c=partial(cSetOffsetValue, 'fOffsetY'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Y', c=partial(cResetField, 'fOffsetY', 0), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.floatField('fOffsetY', pre=1, v=0)
 
 cmds.button(l='-', c=partial(cIncrease, 'fOffsetZ', -1))
 cmds.button(l='+', c=partial(cIncrease, 'fOffsetZ', +1))
-cmds.button(l='Z', c=partial(cSetOffsetValue, 'fOffsetZ'))
+cmds.button(l='Z', c=partial(cResetField, 'fOffsetZ', 0))
 cmds.floatField('fOffsetZ', pre=1, v=0)
 
 cmds.button(l='Offset CVs', c=partial(cOffsetCVs), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
@@ -1547,6 +1594,8 @@ cmds.button(l='Float', c=partial(cAddLostAttr, 'double', 'add'), bgc=(colYellow4
 cmds.button(l='Integer', c=partial(cAddLostAttr, 'long', 'add'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='Boolean', c=partial(cAddLostAttr, 'bool', 'add'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Delete Attr', c=partial(cAddLostAttr, 'any', 'remove'), bgc=(colRed[0], colRed[1], colRed[2]))
+
+
 
 # cmds.button(l='Connect To >>', c=partial(cSetAttr, 'tfToAttr'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 # cmds.textField('tfToAttr', tx='', bgc=(0,0,0))
@@ -1584,7 +1633,7 @@ cmds.text('End', bgc=(colYellow3[0], colYellow3[1], colYellow3[2]))
 cmds.intField('ifDrivenEnd', v=8)
 
 cmds.setParent('layAdjExpr')
-cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 20), (3, 340)])
+cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 20), (3, 330)])
 cmds.button(l='Increment Pos', c=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'), bgc=(colYellow3[0], colYellow3[1], colYellow3[2]))
 cmds.intField('ifDriverCountPos', v=4, cc=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'))
 cmds.textField('tfCheck', tx='', ed=0, bgc=(colUI1[0], colUI1[1], colUI1[2]))
@@ -1595,11 +1644,34 @@ cmds.button(l='Print Expression', c=partial(cWriteExpr, 'print'), bgc=(colYellow
 cmds.button(l='Write Expression', c=partial(cWriteExpr, 'write'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Delete Expression', c=partial(cWriteExpr, 'delete'), bgc=(colRed[0], colRed[1], colRed[2]))
 
-cmds.text(' ')
+cmds.setParent('layAdjExpr')
+cmds.rowColumnLayout(nc=2, cw=[(1, 330), (2, 110)])
 cmds.button(l='Batch Write', c=partial(cWriteExprBatch, 'write'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Batch Delete', c=partial(cWriteExprBatch, 'delete'), bgc=(colRed[0], colRed[1], colRed[2]))
 
 
+
+cmds.setParent('layAdjExpr')
+cmds.frameLayout('fChangeValues', l='--------------- CHANGE VALUES -----------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.rowColumnLayout(nc=8, cw=[(1, 60), (2, 90), (3, 50), (4, 40), (5, 50), (6, 40), (7,55), (8,55)])
+
+cmds.button(l='Attr >>', c=partial(cSetAttr, 'tfAttrChange'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfAttrChange', tx='frameOffset', bgc=(0,0,0))
+cmds.button(l='From',  c=partial(cResetField, 'fFromValue', 0), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.floatField('fFromValue', v=0, pre=2)
+cmds.button(l='Incr',  c=partial(cResetField, 'fIncrement', 2), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.floatField('fIncrement', v=2, pre=2)
+cmds.button(l='Random', c=partial(cRandom, 'random', 0), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Incr', c=partial(cRandom, 'increment', 0), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+
+cmds.setParent('layAdjExpr')
+cmds.rowColumnLayout(nc=5, cw=[(1, 150), (2, 140), (3, 40), (4, 55), (5, 55)])
+cmds.text('Batch', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Increment Per Object',  c=partial(cResetField, 'fIncrementPerObj', 0), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.floatField('fIncrementPerObj', v=0, pre=2)
+
+cmds.button(l='Random', c=partial(cRandomBatch, 'random'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Incr', c=partial(cRandomBatch, 'increment'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 
 
 

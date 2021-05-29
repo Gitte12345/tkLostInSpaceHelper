@@ -10,14 +10,48 @@ global tk_counter
 tk_edgeMemory = []
 
 """
+"track selection order" has to be ON in the prefs!
+grp above details cons has naming "_OFF"!
+----------------
+ctrl naming:
+loop_1_crv_center_grp_con
+- loop_1_crv_center_grp
+-- loop_1_crv_center_jnt
+--- loop_1_crv_0_jnt_half_nul
+---- loop_1_crv_0_jnt_half_con_OFF
+----- loop_1_crv_0_jnt_half_con
+---------------
+
+better ctrl naming:
+loop_1_center_grp_con
+- loop_1_center_grp
+-- loop_1_center_jnt
+--- loop_1_0_jnt_half_nul
+---- loop_1_0_jnt_half_con_OFF
+----- loop_1_0_jnt_half_con
+---------------
 to do
-+ loop to curves out of order
-track selection order has to be ON in the prefs!
-+ cut keys from path anim 
-+ orient joints chain! 
 - build mesh from joints?
-+ delete empty transfoms
 - ctrl size like BB curves
+- controls on sik curve
+
+---------------
+pipeline:
+1.  Loop to curves
+2.  Start ID
+3.  Crv with new start
+4.  Just place (8 - 16)
+5.  Halfway joint up for stars
+6.  Select groups and add nail control: "Sel Under New Control (guide cons)"
+7.  Select halfway joints (down) and "Parent Ctrl To Sel (half cons)"
+8.  move vertices out (offset CVs, x)
+9.  Setup attributes: 
+    Setup Ring Scale
+    Setup Details
+10. Wave Expressions:
+    Select guide cons and "Batch Write"
+
+
 
 """
 
@@ -94,6 +128,49 @@ def cWalkUp(*args):
     """
 
     cmds.pickWalk(d='up')
+
+
+def cReOrder(*args):
+    """
+    Order in outliner according to the selection
+    """
+
+    mySel = cmds.ls(os=1)
+    dad = cmds.listRelatives(mySel[0], p=1)
+    cmds.group(mySel, n='reorder_GRP')
+    childs = cmds.listRelatives(c=1)
+    if dad:
+        cmds.parent(childs, dad)
+    else:
+        cmds.parent(childs, w=1)
+    cmds.delete('reorder_GRP')
+
+
+def cAddNullGrp(*args):
+    """
+    Add null grp and parent selection under it
+    """
+
+    mySel = cmds.ls(sl=1)
+    suffix = '_OFF'
+    for obj in mySel:
+        emptyGrp = cmds.group(empty=1)
+        dad = cmds.listRelatives(obj, p=1)
+        constr = cmds.parentConstraint(obj, emptyGrp)
+        cmds.delete(constr)
+
+        if dad:
+            cmds.parent(emptyGrp, dad)
+
+        cmds.makeIdentity(emptyGrp, apply=1, t=1, r=1, s=1, n=0, pn=0)
+        cmds.parent(obj, emptyGrp)
+        emptyGrp = cmds.rename(emptyGrp, obj + suffix)
+        cmds.select(emptyGrp, r=1)
+
+        return(emptyGrp)
+
+
+
 
 
 def cGetCurveData(nurbsCurve, *args):
@@ -174,8 +251,27 @@ def cIncrease(field, value, *args):
     curValue = cmds.floatField(field, v=0, q=1)
     cmds.floatField(field, v=(curValue + value), e=1)
 
-    
 
+def cJointsVis(*args):
+    """
+    Set jnt visibility to 0 or 1
+
+    """
+
+    myJnts = []
+    mySel = cmds.ls(sl=1)
+    if not mySel:
+        myJnts = cmds.ls(type='joint')
+    else:
+        myJnts = cmds.listRelatives(mySel, ad=1, type='joint')
+
+    state = cmds.getAttr(myJnts[0] + '.drawStyle')
+    if not state == 0 or state == 2:
+        state = 2 
+
+    for jnt in myJnts:
+        print jnt
+        cmds.setAttr(jnt + '.drawStyle', 2-state)
 
 
 def cLockAndHide(state, attrName, *args):
@@ -305,23 +401,33 @@ def cAddGeoAttribute(*args):
     cmds.setAttr(carry + '.geo', e=1, keyable=1)
     cmds.setAttr(geoGrp + '.overrideEnabled', 1)
     cmds.setAttr (geoGrp + '.overrideEnabled', 1)
-    cmds.connectAttr(carry + '.geo', geoGrp + '.overrideDisplayType')
+    cmds.connectAttr(str(carry) + '.geo', geoGrp + '.overrideDisplayType')
+    cmds.setAttr(carry + '.geo', 1)
     cmds.select(carry)
 
 
 
 
-def cCreateNode(objType, *args):
+def cCreateNode(objType, field, *args):
     """
     Create a node, eg a locator
 
     Input
         objType:    spaceLocator
+        field:      filed to fill in 
 
     """
 
-    LC = cmds.spaceLocator(p=(0,0,0))
-    cFillField('tfPivot')
+    mySel = cmds.ls(sl=1)
+    pos = cmds.xform(mySel[0], ws=1, t=1, q=1)
+    print pos
+
+
+    if objType == 'spaceLocator':
+        LC = cmds.spaceLocator(p=(0,0,0))
+        cmds.setAttr(LC[0] + '.translate', pos[0], pos[1], pos[2])
+
+    cFillField(field)
 
 
 def cJointSize(*args):
@@ -474,9 +580,6 @@ def cMultiParent(*args):
             cmds.parent(mySel[i], mySel[i+(num/2)])
 
 
-
-
-
 def cEdegloopToCurves(*args):
     """
     relies on 
@@ -505,7 +608,6 @@ def cEdegloopToCurves(*args):
             pass
 
 
-
 def cBuildOnLoops(edge, *args):
     """
     relies on 
@@ -529,7 +631,7 @@ def cBuildOnLoops(edge, *args):
     if check == 1:
         cmds.select(newLoop, r=1)
         crvs = cmds.polyToCurve(form=2, degree=1, ch=0, conformToSmoothMeshPreview=1)
-        newCrv = cmds.rename(crvs[0], 'loop_' + str(tk_counter) + '_crv')
+        newCrv = cmds.rename(crvs[0], 'loop_' + str(tk_counter))
         cmds.xform(newCrv, cpc=1)
         tk_counter +=1
 
@@ -722,7 +824,7 @@ def cSplineIK(*args):
     Build a SIK 
     """
 
-    fromJnt = cmds.textField('tfFormJnt', tx=1, q=1)
+    fromJnt = cmds.textField('tfFromJnt', tx=1, q=1)
     toJnt = cmds.textField('tfToJnt', tx=1, q=1)
     print fromJnt
     print toJnt
@@ -1027,19 +1129,21 @@ def cMakeCtrl(sel, ctrlShape, *args):
     # cFillField('tfControl')
 
 
-def cAddCtrlToSel(type, *args):
+def cAddCtrlToSel(type, ctrlShape, *args):
     """
     Add ctrls
     Parent the selection to the ctrl curves
 
     Input
         type:       "parent"
+                    "sel_under_ctrl"
     """
 
     mySel = cmds.ls(os=1)
+
     for sel in mySel:
         cmds.select(sel, r=1)
-        ctrlList = cMakeCtrl(sel, 'cube')
+        ctrlList = cMakeCtrl(sel, ctrlShape)
         ctrl = ctrlList[0]
         ctrlGrp = ctrlList[1]
         dad = cmds.listRelatives(sel, p=1)
@@ -1054,7 +1158,12 @@ def cAddCtrlToSel(type, *args):
                 cmds.parent(ctrlGrp, dad)
                 cmds.parent(sel, ctrl)
 
+            cmds.select(ctrl, r=1)
+            cAddNullGrp()
 
+
+        if type == 'sel_under_ctrl': 
+            cmds.parent(sel, ctrl)
 
 
 
@@ -1164,6 +1273,9 @@ def cConnectLost(attrName, *args):
         baseName = splits[0] + '_' + splits[1]
 
         if attrName == 'ringScale':
+            # check attrName
+            cAddAttrib(sel, 'double', 'ringScale', 'x', 'x', 1, 'add')
+
             drivenList = cmds.ls(baseName + '*_center_grp', type='transform')
             for driven in drivenList: 
                 cmds.connectAttr(sel + '.' + attrName, driven + '.scaleX')
@@ -1171,6 +1283,9 @@ def cConnectLost(attrName, *args):
                 cmds.connectAttr(sel + '.' + attrName, driven + '.scaleZ')
 
         if attrName == 'details':
+            # check attrName
+            cAddAttrib(sel, 'bool', 'details', 'x', 'x', 1, 'add')
+
             drivenList = cmds.ls(baseName + '*_half_con', type='transform')
             for driven in drivenList: 
                 cmds.connectAttr(sel + '.' + attrName, driven + '.v')
@@ -1411,13 +1526,90 @@ def cRandomBatch(action, *args):
         cFillField('tfDriver')
         cSelectMatching('tfCheck')
         cRandom(action, newIncr)
-
-
         newIncr += incrPerGuide
     
     cmds.select(selection, r=1)
 
 
+
+def cFindClosestOnMesh(*args):
+    counter = cmds.intField('iIndex', v=1, q=1)
+    mesh = cmds.textField('tfTargetMesh', tx=1, q=1)
+    mySel = cmds.ls(sl=1, fl=1)
+
+    for vtx in mySel:
+        baseName = vtx.split('.')[0]
+        posTip = cmds.xform(vtx, ws=1, t=1, q=1)
+        LC_in = cmds.spaceLocator(n='deleteMe_LC', p=(0,0,0))[0]
+        LC_out =  cmds.spaceLocator(n='deleteMe_LC_out', p=(0,0,0))[0]
+
+        cmds.setAttr(LC_in + '.translate', posTip[0], posTip[1], posTip[2])
+        cp = cmds.createNode('closestPointOnMesh', n='cp_tk')
+
+        cmds.connectAttr(mesh + '.outMesh', cp + '.inMesh')
+        cmds.connectAttr(LC_in + '.translate', cp + '.inPosition')
+        cmds.connectAttr(cp + '.result.position', LC_out + '.translate')
+        u = cmds.getAttr(cp + '.u')
+        v = cmds.getAttr(cp + '.v')
+
+        pos = cmds.xform(LC_out, ws=1, t=1, q=1)
+
+        cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip)
+
+        cmds.delete(cp, LC_in, LC_out)
+        counter +=1 
+
+
+
+
+def cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip, *args):
+    meshShp = ''
+    up = cmds.textField('tfLocatorUp', tx=1, q=1)
+    
+    meshShapes = cmds.listRelatives(mesh, s=1)
+    for shp in meshShapes:
+        intermed = cmds.getAttr(shp + '.intermediateObject')
+        if intermed == 0:
+            meshShp = shp
+
+    FOL = cmds.createNode('transform', n=baseName + '_' + str(counter) + '_FOL', ss=1)
+    fol = cmds.createNode('follicle', n=baseName + '_' + str(counter) + '_FOLShape', p=FOL, ss=1)
+
+    cmds.connectAttr(meshShp + '.worldMesh', fol + '.inputMesh')
+    cmds.connectAttr(meshShp + '.worldMatrix[0]', fol + '.inputWorldMatrix')
+    cmds.connectAttr(fol + '.outRotate', FOL + '.rotate')
+    cmds.connectAttr(fol + '.outTranslate', FOL + '.translate')
+    cmds.setAttr(FOL + '.inheritsTransform', 0)
+    cmds.setAttr(fol + '.parameterU', u)
+    cmds.setAttr(fol + '.parameterV', v)
+
+    cmds.select(clear=1)
+    jntBase = cmds.joint(p=(pos[0], pos[1], pos[2]), n=(baseName + '_' + str(counter) + '_base_jnt'))
+    jntTip = cmds.joint(p=(posTip[0], posTip[1], posTip[2]), n=(baseName + '_' + str(counter) + '_tip_jnt'))
+
+    cmds.select(jntBase, r=1)
+    grp = cAddNullGrp()
+    
+    cmds.select(clear=1)
+
+    cmds.parent(grp, FOL)
+    cmds.joint(jntBase, jntTip, e=1, oj='xyz', secondaryAxisOrient='zup', ch=1, zso=1) 
+
+    cOrientJnts(jntBase, jntTip, up)
+
+
+    
+
+def cOrientJnts(jntBase, jntTip, up, *args):
+    jntTip =  cmds.parent(jntTip, w=1)[0]
+    aimConstr = cmds.aimConstraint(jntTip, jntBase, worldUpType="object", worldUpObject=up, aimVector=(1,0,0), upVector=(0,1,0))
+    # aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject locator1;
+    cmds.delete(aimConstr)
+
+    rot = cmds.getAttr(jntBase + '.r')
+    cmds.setAttr(jntBase + '.jo', rot[0][0], rot[0][1], rot[0][2])
+    cmds.setAttr(jntBase + '.r', 0,0,0)
+    cmds.parent(jntTip, jntBase)
 
 
 
@@ -1432,7 +1624,7 @@ windowStartWidth = 440;
 bh1 = 18;
 bh2 = 22;
 colRed              = [0.44, 0.2, 0.2]
-colBlue             = [0.18, 0.28, 0.44]
+colBlue             = [0.18, 0.28, 0.34]
 colGreen            = [0.28, 0.44, 0.28]
 colGreenL           = [0.38, 0.5, 0.38]
 colGreenD           = [0.1, 0.22, 0.12]
@@ -1460,16 +1652,17 @@ if cmds.window('win_tkLostInSpaceHelper', exists=1):
 myWindow = cmds.window('win_tkLostInSpaceHelper', t=('Lost In Space Helper ' + ver), s=1, wh=(windowStartHeight, windowStartWidth ))
 
 cmds.columnLayout(adj=1, bgc=(colUI2[0], colUI2[1], colUI2[2]))
-cmds.rowColumnLayout(nc=8, cw=[(1, 40), (2, 40), (3, 55), (4, 55), (5, 55), (6, 55), (7, 85), (8, 55)])
+cmds.rowColumnLayout(nc=9, cw=[(1, 40), (2, 40), (3, 55), (4, 55), (5, 55), (6, 55), (7, 45), (8, 75), (9, 20)])
 # cmds.rowColumnLayout(nc=8, cw=[(1, 55), (2, 55), (3, 55), (4, 55), (5, 55), (6, 55), (7, 55), (8, 55)])
 cmds.button(l='Down', c=partial(cSelectLevel, 'selectForMe', 1, 0), bgc=(colYellow[0], colYellow[1], colYellow[2]))
-cmds.button(l='Up', c=partial(cWalkUp), bgc=(colYellow3[0], colYellow3[1], colYellow3[2]))
-cmds.button(l='Jnt Size', c=partial(cJointSize), bgc=(colYellow[0], colYellow[1], colYellow[2]))
+cmds.button(l='Up', c=partial(cWalkUp), bgc=(colYellow[0], colYellow[1], colYellow[2]))
+cmds.button(l='Tgl Jnts', c=partial(cJointsVis), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Jnt Size', c=partial(cJointSize), bgc=(colBlue[0], colBlue[1], colBlue[2]))
 cmds.button(l='To Jnts', c=partial(cSelToJoints), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.text(' ')
-cmds.text(' ')
+cmds.button(l='OFF', c=partial(cAddNullGrp), bgc=(colBlue[0], colBlue[1], colBlue[2]))
+cmds.button(l='Order', c=partial(cReOrder), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='Empty Grps', c=partial(cRemoveEmptyTransforms), bgc=(colRed[0], colRed[1], colRed[2]))
-cmds.button(l='Clear SE', c=partial(cClearSE), bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.button(l='SE', c=partial(cClearSE), bgc=(colRed[0], colRed[1], colRed[2]))
 cmds.setParent(top=1)
 
 
@@ -1500,8 +1693,8 @@ cmds.button(l='... JNTs On Curve As Motionpath', c=partial(cBonesOnCurve, 'bones
 
 cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=5, cw=[(1, 55), (2, 110), (3, 55), (4, 120), (5, 100)])
-cmds.button(l='From >>', c=partial(cFillField, 'tfFormJnt'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.textField('tfFormJnt', ed=0, bgc=(0,0,0))
+cmds.button(l='From >>', c=partial(cFillField, 'tfFromJnt'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.textField('tfFromJnt', ed=0, bgc=(0,0,0))
 cmds.button(l='To >>', c=partial(cFillField, 'tfToJnt'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.textField('tfToJnt', ed=0, bgc=(0,0,0))
 cmds.button(l='Create SplineIK', c=partial(cSplineIK), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
@@ -1512,7 +1705,7 @@ cmds.frameLayout('flJntPivots', l='--------------- SET JNT PIVOT ---------------
 cmds.rowColumnLayout(nc=8, cw=[(1, 30), (2, 50), (3, 90), (4, 10), (5, 50), (6, 50), (7, 50), (8, 110)], bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 # cmds.rowColumnLayout(nc=7, cw=[(1, 80), (2, 90), (3, 10), (4, 50), (5, 50), (6, 50), (7, 110)], bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 
-cmds.button(l='LC', c=partial(cCreateNode, 'spaceLocator'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='LC', c=partial(cCreateNode, 'spaceLocator', 'tfPivot'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='LC >>', c=partial(cFillField, 'tfPivot'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.textField('tfPivot', ed=0, tx='', bgc=(0,0,0))
 cmds.text(' ')
@@ -1556,10 +1749,13 @@ cmds.button(l='Scale', c=partial(cScaleIcon), bgc=(colYellow4[0], colYellow4[1],
 cmds.floatField('fScaleIcon', v=.1, ed=1, pre=1, bgc=(0,0,0))
 
 cmds.setParent('layAdj')
-cmds.rowColumnLayout(nc=4, cw=[(1, 100), (2, 110), (3, 110), (4, 110)])
-cmds.button(l='Multi Parent', c=partial(cMultiParent), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-cmds.button(l='Add Ctrl At Sel', c=partial(cAddCtrlToSel, 'add'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='Parent Ctrl To Sel', c=partial(cAddCtrlToSel,'parent'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
+cmds.button(l='Sel Under New Ctrl (guide cons)', c=partial(cAddCtrlToSel,'sel_under_ctrl', 'nail'), bgc=(colYellow[0], colYellow[1], colYellow[2]))
+cmds.button(l='Parent Ctrl To Sel (half cons)', c=partial(cAddCtrlToSel,'parent', 'cube'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+
+cmds.button(l='Multi Parent', c=partial(cMultiParent), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Add Ctrl At Sel', c=partial(cAddCtrlToSel, 'add', 'cube'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+
 
 cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=13, cw=[(1,25), (2,25), (3,25), (4,50), (5,25), (6,25), (7,25), (8,50), (9,25), (10,25), (11,25), (12,50), (13,65)], bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
@@ -1579,6 +1775,27 @@ cmds.button(l='Z', c=partial(cResetField, 'fOffsetZ', 0))
 cmds.floatField('fOffsetZ', pre=1, v=0)
 
 cmds.button(l='Offset CVs', c=partial(cOffsetCVs), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+
+
+
+cmds.setParent(top=1)
+cmds.frameLayout('flTeeth', l='TEETH SETUP', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+
+cmds.columnLayout('layAdjTeeth', adj=1)
+cmds.rowColumnLayout(nc=5, cw=[(1, 90), (2, 90), (3, 30), (4,140), (5,90)])
+
+cmds.button(l='Target Mesh >>', c=partial(cFillField, 'tfTargetMesh'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfTargetMesh', tx='body_geo', ed=0, bgc=(0,0,0))
+cmds.button(l='LC', c=partial(cCreateNode, 'spaceLocator', 'tfLocatorUp'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Up Locator For JNTs >>', c=partial(cFillField, 'tfLocatorUp'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.textField('tfLocatorUp', tx='locator1', ed=0, bgc=(0,0,0))
+
+cmds.setParent('layAdjTeeth')
+cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 40), (3,310)], bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.text('Index Start')
+cmds.intField('iIndex', v=0)
+cmds.button(l='Each Vertex To JNTS On Mesh', c=partial(cFindClosestOnMesh), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 
 
 
@@ -1604,8 +1821,8 @@ cmds.button(l='Delete Attr', c=partial(cAddLostAttr, 'any', 'remove'), bgc=(colR
 cmds.setParent('layAdjAttr')
 cmds.frameLayout('fPresets', l='--------------- LOST CONNECTIONS --------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.rowColumnLayout(nc=4, cw=[(1, 130), (2, 90), (3, 110), (4, 110)])
-cmds.button(l='Connect Ring Scale', c=partial(cConnectLost, 'ringScale'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-cmds.button(l='Connect Details', c=partial(cConnectLost, 'details'), bgc=(colYellow2[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Setup Ring Scale', c=partial(cConnectLost, 'ringScale'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Setup Details', c=partial(cConnectLost, 'details'), bgc=(colYellow2[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Add Geo Chooser', c=partial(cAddGeoAttribute), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
 
@@ -1614,7 +1831,7 @@ cmds.button(l='Add Geo Chooser', c=partial(cAddGeoAttribute), bgc=(colYellow4[0]
 
 
 cmds.setParent(top=1)
-cmds.frameLayout('flExpressions', l='WAVE EXPRESSIONS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.frameLayout('flExpressions', l='WAVE EXPRESSIONS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
 cmds.columnLayout('layAdjExpr', adj=1)
 cmds.rowColumnLayout(nc=3, cw=[(1,40), (2,70), (3,330)])
@@ -1635,7 +1852,7 @@ cmds.intField('ifDrivenEnd', v=8)
 cmds.setParent('layAdjExpr')
 cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 20), (3, 330)])
 cmds.button(l='Increment Pos', c=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'), bgc=(colYellow3[0], colYellow3[1], colYellow3[2]))
-cmds.intField('ifDriverCountPos', v=4, cc=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'))
+cmds.intField('ifDriverCountPos', v=3, cc=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'))
 cmds.textField('tfCheck', tx='', ed=0, bgc=(colUI1[0], colUI1[1], colUI1[2]))
 
 cmds.setParent('layAdjExpr')

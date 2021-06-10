@@ -40,16 +40,25 @@ pipeline:
 1.  Loop to curves
 2.  Start ID
 3.  Crv with new start
-4.  Just place (8 - 16)
+4.  Just place (8 - 16) and adjust centere joint
 5.  Halfway joint up for stars
 6.  Select groups and add nail control: "Sel Under New Control (guide cons)"
 7.  Select halfway joints (down) and "Parent Ctrl To Sel (half cons)"
 8.  move vertices out (offset CVs, x)
 9.  Setup attributes: 
-    Setup Ring Scale
-    Setup Details
+    Setup Ring Scale (select guide cons)
+    Setup Details (select guide cons)
 10. Wave Expressions:
     Select guide cons and "Batch Write"
+11. mGear: 
+    chain FK spline 01
+    override joint number with number of star elements
+
+teeth
+12. Select target mesh / teeth mesh / nth vertex and index start
+13. Batch for multiple objects
+14. Select base joints and use "Parent Ctrl To Sel (half cons)"
+15. Main teeth with extra con (spread and expand)
 
 
 
@@ -60,6 +69,21 @@ def cShrinkWin(windowToClose, *args):
     shrink window to optimal size
     """
     cmds.window(windowToClose, e=1, h=20, w=440)
+
+
+def winProgress(title, pBarName, numElements):
+    if cmds.window(title, exists=1):
+        cmds.deleteUI(title)
+
+    windowProgress = cmds.window(title, wh=[300, 28])
+
+    cmds.columnLayout()
+    progressControl = cmds.progressBar(
+        "pProgress", maxValue=numElements, w=300
+    )
+
+    cmds.showWindow(title)
+    cmds.window(title, e=1, wh=[300, 28])
 
 
 def cClearSE(*args):
@@ -170,6 +194,32 @@ def cAddNullGrp(*args):
         return(emptyGrp)
 
 
+
+
+
+def cSelectionSet(type, *args):
+    gShelfTopLevel = mel.eval("$tmpVar=$gShelfTopLevel")
+    currentTab = cmds.tabLayout(gShelfTopLevel, q=1, st=1)
+    setName = cmds.textField('tSelectionSet', tx=1, q=1)
+    iconColor = cmds.radioCollection('rcIconColors', q=1, sl=1)
+    if iconColor == 'rbRed':
+        iconColor = 'red'
+    if iconColor == 'rbGreen':
+        iconColor = 'green'
+    if iconColor == 'rbBlue':
+        iconColor = 'blue'
+
+    mySel = cmds.ls(os=1, fl=1)
+
+    imageName = 'ss_' + iconColor + '_' + str(type) + '.png'
+    cmd = 'cmds.select("'
+    for i in range(0, len(mySel), 1):
+        cmd += mySel[i]
+        if i < len(mySel)-1:
+            cmd += '", "'
+    cmd += '", ' + type + '=1)'
+
+    cmds.shelfButton(p=currentTab, rpt=1, i1=imageName, iol=setName, c=cmd, ann=cmd)
 
 
 
@@ -406,6 +456,26 @@ def cAddGeoAttribute(*args):
     cmds.select(carry)
 
 
+def cCreateNodeAndConnect(*args):
+    ''' 
+    Create a node multiple times 
+    and connect with sel
+    '''
+    counter = cmds.intField('ifCountFrom', v=1, q=1)
+    nodeType = cmds.textField('tfNodeType', tx=1, q=1)
+    fromAttr = cmds.textField('tfFromAttr', tx=1, q=1)
+    toAttr = cmds.textField('tfToAttr', tx=1, q=1)
+    newName = cmds.textField('tfNodeNewName', tx=1, q=1)
+
+    mySel = cmds.ls(os=1, fl=1)
+
+    for i in range(0, len(mySel), 1):
+        node = cmds.createNode(nodeType, n=(newName + '_' + str(counter)))
+        cmds.connectAttr(mySel[i] + '.' + fromAttr, node + '.' + toAttr)
+        counter +=1
+
+
+
 
 
 def cCreateNode(objType, field, *args):
@@ -459,6 +529,15 @@ def cFillField(field, *args):
     if field == 'tfDriven':
         cDeriveFromDriven('tfDriven')
 
+    if field == 'tfNmSpc':
+        nmSpc = mySel.split(':')[0]
+        cmds.textField(field, tx=nmSpc, e=1)
+
+    if field == 'tfNodeType':
+        objType = cmds.objectType(mySel[0])
+        cmds.textField(field, tx=objType, e=1)
+
+
 
 def cGetID(*args):
     """
@@ -469,6 +548,8 @@ def cGetID(*args):
     mySel = cmds.ls(sl=1)[0].split('[')[1].split(':')[-1].split(']')[0]
     value = int(mySel)
     cmds.intField('ifID', v=value, e=1)
+
+    return(value)
 
 
 def cRemoveEmptyTransforms(*args):
@@ -1270,6 +1351,56 @@ def cConnectLost(attrName, *args):
     mySel = cmds.ls(os=1)
     for sel in mySel:
         splits = sel.split('_')
+        baseName = splits[0] + '_' + splits[1] + '_'
+
+        print 'baseName: ' + str(baseName)
+
+        if attrName == 'ringScale':
+            # check attrName
+            cAddAttrib(sel, 'double', 'ringScale', 'x', 'x', 1, 'add')
+
+            drivenList = cmds.ls(str(baseName) + 'center_grp', type='transform')
+            for driven in drivenList: 
+                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleX')
+                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleY')
+                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleZ')
+
+        if attrName == 'details':
+            # check attrName
+            cAddAttrib(sel, 'bool', 'details', 'x', 'x', 1, 'add')
+
+            drivenList = cmds.ls(str(baseName) + '*_half_con', type='transform')
+            for driven in drivenList: 
+                cmds.connectAttr(sel + '.' + attrName, driven + '.v')
+
+            # driver:
+            # loop_1_crv_center_grp_con
+            
+            # driven:
+            # loop_1_crv_4_jnt_half_con 
+            # loop_1_crv_3_jnt_half_con 
+            # loop_1_crv_2_jnt_half_con 
+            # loop_1_crv_1_jnt_half_con 
+            # loop_1_crv_0_jnt_half_con 
+            # loop_1_crv_7_jnt_half_con 
+            # loop_1_crv_5_jnt_half_con 
+            # loop_1_crv_6_jnt_half_con 
+
+
+
+def cConnectLost_OLD(attrName, *args):
+    """
+    connect attributes to selection
+    Eg to connect ringScale to all child`s scale
+    so far: ringScale, details 
+
+    Input
+        attrName:      attribute
+    """
+
+    mySel = cmds.ls(os=1)
+    for sel in mySel:
+        splits = sel.split('_')
         baseName = splits[0] + '_' + splits[1]
 
         if attrName == 'ringScale':
@@ -1532,12 +1663,24 @@ def cRandomBatch(action, *args):
 
 
 
+
 def cFindClosestOnMesh(*args):
+    """
+    Given a or more vertices
+    Find the cloest point on a mesh
+
+    """
     counter = cmds.intField('iIndex', v=1, q=1)
     mesh = cmds.textField('tfTargetMesh', tx=1, q=1)
     mySel = cmds.ls(sl=1, fl=1)
 
+    # title = 'win_Progress'
+    # progressBarName = 'pProgress'
+    # winProgress(title, progressBarName, len(mySel))
+
+
     for vtx in mySel:
+        # cmds.progressBar(progressBarName, e=1, step=1)
         baseName = vtx.split('.')[0]
         posTip = cmds.xform(vtx, ws=1, t=1, q=1)
         LC_in = cmds.spaceLocator(n='deleteMe_LC', p=(0,0,0))[0]
@@ -1559,10 +1702,26 @@ def cFindClosestOnMesh(*args):
         cmds.delete(cp, LC_in, LC_out)
         counter +=1 
 
-
+    # cmds.deleteUI(title)
 
 
 def cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip, *args):
+    """
+    create a follicle on the given mesh at the give uv ccord
+
+    Input
+    mesh:
+    basename
+    counter
+    u
+    v
+    pos
+    posTip
+
+
+    """
+
+
     meshShp = ''
     up = cmds.textField('tfLocatorUp', tx=1, q=1)
     
@@ -1598,10 +1757,70 @@ def cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip, *args):
     cOrientJnts(jntBase, jntTip, up)
 
 
-    
+def cGetVertexID(field, *args):
+    curSel = cmds.ls(sl=1, fl=1)[0]
+    id = int(curSel.split('[')[1].split(']')[0])
+    cmds.intField(field, v=id, e=1)
+
+
+
+def cSelNthVertex(*args):
+    """
+    Select the first nth of every poly shell
+    To eg select one cv of every tooth of a teeth
+    """
+    counter = 0
+    vtx_dict = {}
+    vtxList = []
+    vtxListCollect = []
+     
+    nth = cmds.intField('iNthVertexId', v=1, q=1)
+    teethMesh = cmds.textField('tfTeethMesh', tx=1, q=1)
+    numVtx = cmds.polyEvaluate(teethMesh, vertex=1)
+
+    # title = 'win_Progress'
+    # progressBarName = 'pProgress'
+    # winProgress(title, progressBarName, numVtx)
+
+    for i in range(0, numVtx, 1):
+        # cmds.progressBar(progressBarName, e=1, step=1)
+        if not i in vtxListCollect: 
+            cmds.select(teethMesh + '.vtx[' + str(i) + ']', r=1)
+            cmds.polySelectConstraint(m=2, t=1, shell=1) 
+            curSel = cmds.ls(sl=1, fl=1)
+
+            for vtx in curSel:
+                id = vtx.split('[')[1].split(':')[-1].split(']')[0]
+                if id not in vtxListCollect:
+                    vtxList.append(id)
+                    vtxListCollect.append(id)
+
+            if vtxList:
+                vtx_dict[str(counter)] = vtxList
+                counter +=1
+                vtxList = []
+
+    # cmds.deleteUI(title)
+    cmds.polySelectConstraint(shell=0)
+    cmds.select(clear=1)
+
+    for key, value in vtx_dict.items():
+        vtxList = value
+        cmds.select(teethMesh + '.vtx[' + str(vtxList[nth]) + ']', add=1)
+
+ 
+
+
 
 def cOrientJnts(jntBase, jntTip, up, *args):
+    """
+    Orient joints to an up vector
+    """
+
     jntTip =  cmds.parent(jntTip, w=1)[0]
+    cmds.setAttr(jntBase + '.jo', 0,0,0)
+    cmds.setAttr(jntBase + '.rotate', 0,0,0)
+
     aimConstr = cmds.aimConstraint(jntTip, jntBase, worldUpType="object", worldUpObject=up, aimVector=(1,0,0), upVector=(0,1,0))
     # aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject locator1;
     cmds.delete(aimConstr)
@@ -1612,13 +1831,53 @@ def cOrientJnts(jntBase, jntTip, up, *args):
     cmds.parent(jntTip, jntBase)
 
 
+def cFindClosestBatch(*args):
+    batchIndex = cmds.intField('iIndex', v=1, q=1)
+    curSel = cmds.ls(os=1)
+    amount = int(len(curSel))
+
+    title = 'win_Progress'
+    progressBarName = 'pProgress'
+    winProgress(title, progressBarName, amount)
+
+    for sel in curSel:
+        cmds.progressBar(progressBarName, e=1, step=1)
+        cmds.select(sel, r=1)
+        cFillField('tfTeethMesh')
+        cSelNthVertex()
+        cFindClosestOnMesh()
+        batchIndex +=1
+        cmds.intField('iIndex', v=batchIndex, e=1)
+
+    cmds.deleteUI(title)
+    cmds.select(curSel, r=1)
+
+
+def cBatchSkin(*args):
+    curSel = cmds.ls(os=1)
+    
+    for sel in curSel:
+        bindJnts = cmds.ls(sel + '*' + 'tip_jnt')
+        if len(bindJnts) == 1:
+            print sel
+            print bindJnts[0]
+            cmds.skinCluster(sel, bindJnts[0], tsb=1)
+
+
+def cRemoveFromNmSpc(*args):
+    mySel = cmds.ls(sl=1, fl=1)
+    # nmSpc = cmds.textField('tfNmSpc', tx=1, q=1)
+
+    for sel in mySel:
+        newName = sel.split(':')[1]
+
+        cmds.rename(sel, newName)
 
 
 
 
 
-
-ver = 'v0.1';
+ver = 'v0.2';
 windowStartHeight = 150;
 windowStartWidth = 440;
 bh1 = 18;
@@ -1673,7 +1932,7 @@ cmds.columnLayout('layAdj', adj=1)
 
 
 cmds.frameLayout('flCurves', l='--------------- CURVES -----------------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.columnLayout(adj=1)
+cmds.columnLayout(adj=1, bgc=(colUI2[0], colUI2[1], colUI2[2]))
 
 cmds.rowColumnLayout(nc=4, cw=[(1, 110), (2, 110), (3, 50), (4, 170)])
 cmds.button(l='Loop To Curves', c=partial(cEdegloopToCurves), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
@@ -1746,7 +2005,7 @@ cmds.radioButton('rbOrientX', label='X')
 cmds.radioButton('rbOrientY', label='Y', sl=1)
 cmds.radioButton('rbOrientZ', label='Z')
 cmds.button(l='Scale', c=partial(cScaleIcon), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-cmds.floatField('fScaleIcon', v=.1, ed=1, pre=1, bgc=(0,0,0))
+cmds.floatField('fScaleIcon', v=.1, ed=1, pre=2, bgc=(0,0,0))
 
 cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
@@ -1762,17 +2021,17 @@ cmds.rowColumnLayout(nc=13, cw=[(1,25), (2,25), (3,25), (4,50), (5,25), (6,25), 
 cmds.button(l='-', c=partial(cIncrease, 'fOffsetX', -1))
 cmds.button(l='+', c=partial(cIncrease, 'fOffsetX', 1))
 cmds.button(l='X', c=partial(cResetField, 'fOffsetX', 0))
-cmds.floatField('fOffsetX', pre=1, v=1)
+cmds.floatField('fOffsetX', pre=3, v=1)
 
 cmds.button(l='-', c=partial(cIncrease, 'fOffsetY', -1), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='+', c=partial(cIncrease, 'fOffsetY', +1), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='Y', c=partial(cResetField, 'fOffsetY', 0), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.floatField('fOffsetY', pre=1, v=0)
+cmds.floatField('fOffsetY', pre=3, v=0)
 
 cmds.button(l='-', c=partial(cIncrease, 'fOffsetZ', -1))
 cmds.button(l='+', c=partial(cIncrease, 'fOffsetZ', +1))
 cmds.button(l='Z', c=partial(cResetField, 'fOffsetZ', 0))
-cmds.floatField('fOffsetZ', pre=1, v=0)
+cmds.floatField('fOffsetZ', pre=3, v=0)
 
 cmds.button(l='Offset CVs', c=partial(cOffsetCVs), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
@@ -1780,28 +2039,44 @@ cmds.button(l='Offset CVs', c=partial(cOffsetCVs), bgc=(colYellow4[0], colYellow
 
 
 cmds.setParent(top=1)
-cmds.frameLayout('flTeeth', l='TEETH SETUP', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.frameLayout('flTeeth', l='TEETH SETUP', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
 cmds.columnLayout('layAdjTeeth', adj=1)
 cmds.rowColumnLayout(nc=5, cw=[(1, 90), (2, 90), (3, 30), (4,140), (5,90)])
 
 cmds.button(l='Target Mesh >>', c=partial(cFillField, 'tfTargetMesh'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.textField('tfTargetMesh', tx='body_geo', ed=0, bgc=(0,0,0))
+cmds.textField('tfTargetMesh', tx='lam_01:LampreyLarge_mouth_lo_geo', ed=0, bgc=(0,0,0))
 cmds.button(l='LC', c=partial(cCreateNode, 'spaceLocator', 'tfLocatorUp'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Up Locator For JNTs >>', c=partial(cFillField, 'tfLocatorUp'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.textField('tfLocatorUp', tx='locator1', ed=0, bgc=(0,0,0))
+cmds.textField('tfLocatorUp', tx='mainTeeth_LC', ed=0, bgc=(0,0,0))
 
 cmds.setParent('layAdjTeeth')
-cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 40), (3,310)], bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.text('Index Start')
-cmds.intField('iIndex', v=0)
-cmds.button(l='Each Vertex To JNTS On Mesh', c=partial(cFindClosestOnMesh), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.rowColumnLayout(nc=5, cw=[(1, 90), (2, 90), (3, 90), (4,50), (5,120)])
+cmds.button(l='Teeth Mesh >>', c=partial(cFillField, 'tfTeethMesh'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfTeethMesh', tx='lam_01:fangLarge_001_geo', ed=0, bgc=(0,0,0))
+cmds.button(l='Nth Vertex Id >>', c=partial(cGetVertexID, 'iNthVertexId'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+# cmds.text('Nth Vertex Id', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.intField('iNthVertexId', v=19)
+cmds.button(l='Select Nth Vertex', c=partial(cSelNthVertex), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+cmds.setParent('layAdjTeeth')
+cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 90), (3, 260)])
+cmds.text('Index Start', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.intField('iIndex', v=1)
+cmds.button(l='Each Vertex To JNTS On Mesh', c=partial(cFindClosestOnMesh), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+cmds.setParent('layAdjTeeth')
+# cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 90), (3, 260)])
+cmds.rowColumnLayout(nc=2, cw=[(1, 180), (2, 260)])
+cmds.button(l='Batch Skin', c=partial(cBatchSkin), bgc=(colGreen[0], colGreen[1], colGreen[2]))
+cmds.button(l='Batch - Same Vtx Count / Order Required!', c=partial(cFindClosestBatch), bgc=(colRed[0], colRed[1], colRed[2]))
+
 
 
 
 
 cmds.setParent(top=1)
-cmds.frameLayout('flAttributesAndConnections', l='ATTRIBUTES AND CONNECTIONS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.frameLayout('flAttributesAndConnections', l='ATTRIBUTES AND CONNECTIONS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
 cmds.columnLayout('layAdjAttr', adj=1)
 cmds.rowColumnLayout(nc=6, cw=[(1, 90), (2, 90), (3, 60), (4, 60), (5, 60), (6, 80)])
@@ -1820,12 +2095,38 @@ cmds.button(l='Delete Attr', c=partial(cAddLostAttr, 'any', 'remove'), bgc=(colR
 
 cmds.setParent('layAdjAttr')
 cmds.frameLayout('fPresets', l='--------------- LOST CONNECTIONS --------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.rowColumnLayout(nc=4, cw=[(1, 130), (2, 90), (3, 110), (4, 110)])
+cmds.rowColumnLayout(nc=3, cw=[(1, 110), (2, 110), (3, 220)])
 cmds.button(l='Setup Ring Scale', c=partial(cConnectLost, 'ringScale'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Setup Details', c=partial(cConnectLost, 'details'), bgc=(colYellow2[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Add Geo Chooser', c=partial(cAddGeoAttribute), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
 
+# cmds.setParent('layAdjAttr')
+# cmds.button(l='nmSpc >>', c=partial(cFillField, 'tfNmSpc'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+# cmds.textField('tfNmSpc', tx='', bgc=(0,0,0))
+cmds.text(' ', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.text(' ', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Remove NmSpc From Selection', c=partial(cRemoveFromNmSpc), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+
+
+cmds.setParent('layAdjAttr')
+cmds.frameLayout('fCreateNodes', l='--------------- CREATE MULTIPLE NODES AND CONNECT --------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.rowColumnLayout(nc=4, cw=[(1, 110), (2, 110), (3, 110), (4, 110)])
+cmds.button(l='Node Type >>', c=partial(cFillField, 'tfNodeType'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfNodeType', tx='multiplyDivide', ed=0, bgc=(0,0,0))
+cmds.button(l='New Name >>', c=partial(cFillField, 'tfNodeNewName'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfNodeNewName', tx='contractMult', bgc=(0,0,0))
+
+cmds.button(l='From Attr >>', c=partial(cSetAttr, 'tfFromAttr'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfFromAttr', tx='contract', ed=0, bgc=(0,0,0))
+cmds.button(l='To Attr >>', c=partial(cSetAttr, 'tfToAttr'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfToAttr', tx='i1x', ed=0, bgc=(0,0,0))
+
+cmds.setParent('layAdjAttr')
+cmds.rowColumnLayout(nc=3, cw=[(1, 110), (2, 110), (3, 220)])
+cmds.text('Count From', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.intField('ifCountFrom', v=1)
+cmds.button(l='Create And Connect', c=partial(cCreateNodeAndConnect, 'tfToAttr'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
 
 
@@ -1939,7 +2240,24 @@ cmds.button(l='translate', c=partial(cLockAndHide, 1, 'translate'), bgc=(colUI3[
 cmds.button(l='rotate', c=partial(cLockAndHide, 1, 'rotate'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
 cmds.button(l='scale', c=partial(cLockAndHide, 1, 'scale'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
 cmds.button(l='vis', c=partial(cLockAndHide, 1, 'v'), bgc=(colUI6[0], colUI6[1], colUI6[2]))
-# cmds.setParent(top=1)
+
+
+
+cmds.setParent(top=1)
+cmds.frameLayout('flSelectionSets', l='SELECTION SETS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+
+cmds.rowColumnLayout(nc=8, cw=[(1,44),(2,132),(3,44),(4,44),(5,44),(6,44),(7,44),(8,44)])
+cmds.button(l='X', c=partial(cFillField, 'tSelectionSet'), bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.textField('tSelectionSet', tx='set')
+cmds.button(l='rep', c=partial(cSelectionSet, 'r'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='add', c=partial(cSelectionSet, 'add'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='tgl', c=partial(cSelectionSet, 'tgl'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.radioCollection('rcIconColors')
+cmds.radioButton('rbRed', label='R', bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.radioButton('rbGreen', label='G', sl=1, bgc=(colGreen[0], colGreen[1], colGreen[2]))
+cmds.radioButton('rbBlue', label='B', bgc=(colBlue[0], colBlue[1], colBlue[2]))
+
+
 
 cmds.setParent(top=1)
 cmds.textField('tfFeedback', tx='', ed=0, bgc=(colUI1[0], colUI1[1], colUI1[2]))

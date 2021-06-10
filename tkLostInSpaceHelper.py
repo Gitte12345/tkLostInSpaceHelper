@@ -1441,6 +1441,39 @@ def cIncrementPos(fieldDriven, fieldPos, fieldCheck, *args):
     """
 
     text = ''
+    sp = []
+    driven = cmds.textField(fieldDriven, tx=1, q=1)
+    countPos = cmds.intField(fieldPos, v=1, q=1)
+
+    isNmSpc = driven.split(':')
+
+    if len(isNmSpc) == 1:
+        sp = driven.split('_')
+
+    if len(isNmSpc) == 2:
+        text = str(isNmSpc[0]) + ':'
+        sp = isNmSpc[-1].split('_')
+
+
+    for i in range(0, countPos, 1):
+        text += sp[i] + '_'
+    
+    text += ' <count> _'
+
+    for i in range(countPos+1, len(sp)-1, 1):
+        text += sp[i] + '_'
+    
+    text += sp[-1]
+
+    cmds.textField(fieldCheck, tx=text, e=1)
+
+
+def cIncrementPos_OLD(fieldDriven, fieldPos, fieldCheck, *args):
+    """
+    check increments position 
+    """
+
+    text = ''
     driven = cmds.textField(fieldDriven, tx=1, q=1)
     countPos = cmds.intField(fieldPos, v=1, q=1)
     sp = driven.split('_')
@@ -1470,12 +1503,27 @@ def cDeriveFromDriver(fieldDriver, fieldPos, *args):
     """
 
     baseName = ''
+    sp = []
     drivenList = []
     driver = cmds.textField(fieldDriver, tx=1, q=1)
-    sp = driver.split('_')
 
-    for i in range(0, fieldPos+1, 1):
-        baseName += sp[i] + '_'
+    isNmSpc = driver.split(':')
+    if len(isNmSpc) == 1:
+        sp = driver.split('_')
+        for i in range(0, fieldPos+1, 1):
+            baseName += sp[i] + '_'
+
+    if len(isNmSpc) == 2:
+        baseName = str(isNmSpc[0]) + ':'
+        sp = isNmSpc[-1].split('_')
+
+        for i in range(0, fieldPos+1, 1):
+            baseName += sp[i] + '_'
+
+
+
+    # for i in range(0, fieldPos+1, 1):
+    #     baseName += sp[i] + '_'
 
     drivenList = cmds.ls(str(baseName) + '*_con', type='transform')
     drivenList.remove(driver)
@@ -1539,7 +1587,7 @@ def cSelectMatching(field, *args):
     if field == 'tfCheck':
         sp = cmds.textField(field, tx=1, q=1).split(' ') 
         match = cmds.ls(sp[0] + '*' + sp[2])
-        print match
+        # print match
 
         cmds.select(str(sp[0]) + '*' + str(sp[2]), r=1)
 
@@ -1616,7 +1664,7 @@ def cRandom(action, incrPerGuide, *args):
 
     """
 
-    print 'incrPerGuide: ' + str(incrPerGuide)
+    # print 'incrPerGuide: ' + str(incrPerGuide)
 
     mySel = cmds.ls(os=1)
     attributes = cmds.textField('tfAttrChange', tx=1, q=1).split(' ')
@@ -1625,20 +1673,20 @@ def cRandom(action, incrPerGuide, *args):
 
     newValue = fromValue + incrPerGuide
     if action == 'increment':
-        print 'increment...'
+        # print 'increment...'
         for sel in mySel:
             newValue = newValue + incrValue
             for i in range(0, len(attributes),1):
-                print 'newValue: ' + str(newValue)
+                # print 'newValue: ' + str(newValue)
                 cmds.setAttr(sel + '.' + attributes[i], newValue)
 
     if action == 'random':
-        print 'random...'
+        # print 'random...'
         for sel in mySel:
             for i in range(0, len(attributes),1):
                 newValue = random.uniform(fromValue, incrValue)
-                print 'sel: ' + str(sel)
-                print 'newValue: ' + str(newValue)
+                # print 'sel: ' + str(sel)
+                # print 'newValue: ' + str(newValue)
                 cmds.setAttr(sel + '.' + attributes[i], newValue)
 
 
@@ -2153,7 +2201,7 @@ cmds.intField('ifDrivenEnd', v=8)
 cmds.setParent('layAdjExpr')
 cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 20), (3, 330)])
 cmds.button(l='Increment Pos', c=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'), bgc=(colYellow3[0], colYellow3[1], colYellow3[2]))
-cmds.intField('ifDriverCountPos', v=3, cc=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'))
+cmds.intField('ifDriverCountPos', v=2, cc=partial(cIncrementPos, 'tfDriven', 'ifDriverCountPos', 'tfCheck'))
 cmds.textField('tfCheck', tx='', ed=0, bgc=(colUI1[0], colUI1[1], colUI1[2]))
 
 cmds.setParent('layAdjExpr')

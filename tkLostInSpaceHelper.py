@@ -28,7 +28,7 @@ loop_1_center_grp_con
 -- loop_1_center_jnt
 --- loop_1_0_jnt_half_nul
 ---- loop_1_0_jnt_half_con_OFF
------ loop_1_0_jnt_half_con
+----- loop_1_0_jnt_half_conq
 ---------------
 to do
 - build mesh from joints?
@@ -40,25 +40,50 @@ pipeline:
 1.  Loop to curves
 2.  Start ID
 3.  Crv with new start
-4.  Just place (8 - 16) and adjust centere joint
+4.  Just place (8 - 16) and adjust center joint
 5.  Halfway joint up for stars
 6.  Select groups and add nail control: "Sel Under New Control (guide cons)"
 7.  Select halfway joints (down) and "Parent Ctrl To Sel (half cons)"
 8.  move vertices out (offset CVs, x)
 9.  Setup attributes: 
-    Setup Ring Scale (select guide cons)
-    Setup Details (select guide cons)
+... Setup Ring Scale (select guide cons)
+... Setup Details (select guide cons)
+... Setup Contract (select guide cons)
 10. Wave Expressions:
-    Select guide cons and "Batch Write"
+... Select guide cons and "Batch Write"
 11. mGear: 
-    chain FK spline 01
-    override joint number with number of star elements
+... chain FK spline 01
+... override joint number with number of star elements
 
-teeth
+teeth:
 12. Select target mesh / teeth mesh / nth vertex and index start
 13. Batch for multiple objects
 14. Select base joints and use "Parent Ctrl To Sel (half cons)"
 15. Main teeth with extra con (spread and expand)
+16. Clean up:
+... Remove nameSpace from follicles and cons with "Remove NmSpc From Selection"
+... Hide follcle shapes
+
+Hero teeth:
+1. Enable tip vertex on to get nice long joints from base to tip
+2. Select base joints and use "Parent Ctrl To Sel (half cons)"
+3. mainTeeth_CON 
+... spread --> OFF.rz
+... expand --> expandMult --> jntBase.tx
+4. Parent mainTeeth_CON under bodyLoop_1 (head)
+
+Keep volume:
+1.  Build a second joint chain (JS Chain From Chain)
+2.  Build a new SIK
+3.  replace SIK curve with mGear SIK (body_C0_mst_crv)
+4.  js create stretchy spline, keep volume, world scale from main con
+5.  Keep Volume to add functionality
+
+Valve:
+1. lowresgeo, skin
+2. cvWrap to bs geo
+3. bs to skinned geo
+
 
 
 
@@ -194,6 +219,75 @@ def cAddNullGrp(*args):
         return(emptyGrp)
 
 
+def cHideType(type, *args):
+    mySel = cmds.ls(type='follicle')
+
+    state = cmds.getAttr(mySel[0] + '.v')
+    for sel in mySel:
+        cmds.setAttr(sel + '.v', 1-state)
+
+    cmds.textField('tfFeedback', tx = 'Set all ' + str(type) + ' to ' + str(1-state), e=1)
+
+
+def cCvWrap(*args):
+    mySel = cmds.ls(os=1, fl=1)
+    wrapper = mySel[-1]
+    for i in range(0,len(mySel)-1, 1):
+        cmds.cvWrap(mySel[i], wrapper)
+
+
+def cBlendShape(*args):
+    mySel = cmds.ls(os=1, fl=1)
+    amount = len(mySel)/2
+    for i in range(0, amount, 1):
+        bs = cmds.blendShape(mySel[i], mySel[amount + i], foc=1)
+        cmds.setAttr(str(bs[0]) + '.' + str(mySel[i]), 1)
+
+
+def cMatchOrient(type, *args):
+    mySel = cmds.ls(os=1, fl=1)
+
+    if type == 'childLikeParent':
+        for sel in mySel:
+            dad = cmds.listRelatives(sel, p=1)[0]
+            oc = cmds.orientConstraint(dad, sel, mo=0)
+            cmds.delete(oc)
+
+    if type == 'secondLikeFirst':
+        amount = len(mySel)/2
+        for i in range(0, amount, 1):
+            oc = cmds.orientConstraint(mySel[i], mySel[amount + i], mo=0)
+            cmds.delete(oc)
+
+
+def cSkinWhiskers(*args):
+    # lam_01:whisker_001_geo
+    mySel = cmds.ls(os=1, fl=1)
+
+    for i in range(0, len(mySel), 1):
+        sel = mySel[i]
+        print sel, i, (sel + '_' + str(i+1) + '_FOL')
+        cmds.select('wskLoop_' + str(i+1) + '_main_grp', r=1)
+        bindJnts = cSelToJoints()
+        print 'bindJnts geo:' 
+        print bindJnts
+        cmds.skinCluster(sel, bindJnts, tsb=1, dr=20, mi=2, bindMethod=1)
+
+        cmds.select(sel + '_' + str(i+1) + '_FOL', r=1)
+        # lam_01:whisker_001_geo 
+        # lam_01:whisker_001_geo_1_FOL
+
+        bindJnts = cSelToJoints()
+        print 'bindJnts crv:' 
+        print bindJnts
+        cmds.skinCluster('wskLoop_' + str(i+1), bindJnts, tsb=1, dr=2, mi=2, bindMethod=1)
+
+
+
+
+
+
+
 
 
 
@@ -220,6 +314,8 @@ def cSelectionSet(type, *args):
     cmd += '", ' + type + '=1)'
 
     cmds.shelfButton(p=currentTab, rpt=1, i1=imageName, iol=setName, c=cmd, ann=cmd)
+
+
 
 
 
@@ -320,7 +416,7 @@ def cJointsVis(*args):
         state = 2 
 
     for jnt in myJnts:
-        print jnt
+        # print jnt
         cmds.setAttr(jnt + '.drawStyle', 2-state)
 
 
@@ -333,7 +429,14 @@ def cLockAndHide(state, attrName, *args):
     mySel = cmds.ls(sl=1, l=1)
 
     if attrName is not 'sel':
-        if attrName is not 'translate' and attrName is not 'rotate' and attrName is not 'scale':
+        if attrName == 'all':
+            for carry in mySel:
+                attributes = cmds.listAttr(carry, k=1)
+                for attr in attributes:
+                    cmds.setAttr(carry + '.' + attr, lock=1-state)
+                    cmds.setAttr(carry + '.' + attr, keyable=state, channelBox=0)
+
+        if attrName is not 'translate' and attrName is not 'rotate' and attrName is not 'scale' and attrName is not 'all':
             for carry in mySel:
                 cmds.setAttr(carry + '.' + attrName, lock=1-state)
                 cmds.setAttr(carry + '.' + attrName, keyable=state, channelBox=0)
@@ -381,7 +484,6 @@ def cAddAttrib(selection, attrType, attrName, min, max, dv, state, *args):
         dv:         default value, 'x' for none
         state:      add or remove
     """
-
     defaultValueList = ['ringScale']
 
     # print 'selection:' + str(selection)
@@ -489,12 +591,15 @@ def cCreateNode(objType, field, *args):
     """
 
     mySel = cmds.ls(sl=1)
-    pos = cmds.xform(mySel[0], ws=1, t=1, q=1)
-    print pos
+    pos = []
 
+    if mySel:
+        pos = cmds.xform(mySel[0], ws=1, t=1, q=1)
+    else:
+        pos = [0,0,0]
 
     if objType == 'spaceLocator':
-        LC = cmds.spaceLocator(p=(0,0,0))
+        LC = cmds.spaceLocator(p=(pos[0], pos[1], pos[2]))
         cmds.setAttr(LC[0] + '.translate', pos[0], pos[1], pos[2])
 
     cFillField(field)
@@ -518,10 +623,12 @@ def cFillField(field, *args):
     """
 
     mySel = cmds.ls(sl=1)
+
     if mySel:
         cmds.textField(field, tx=mySel[0], e=1)
     else:
         cmds.textField(field, tx='', e=1)
+
 
     if field == 'tfDriver':
         cDeriveFromDriver('tfDriver', 1)
@@ -537,6 +644,9 @@ def cFillField(field, *args):
         objType = cmds.objectType(mySel[0])
         cmds.textField(field, tx=objType, e=1)
 
+    if field == 'tfFromJnt':
+        lastJnt = cmds.listRelatives(ad=1, type='joint')[0]
+        cmds.textField('tfToJnt', tx=lastJnt, e=1)
 
 
 def cGetID(*args):
@@ -907,12 +1017,10 @@ def cSplineIK(*args):
 
     fromJnt = cmds.textField('tfFromJnt', tx=1, q=1)
     toJnt = cmds.textField('tfToJnt', tx=1, q=1)
-    print fromJnt
-    print toJnt
-    
-    SIK = cmds.ikHandle(toJnt, fromJnt, sol='ikSplineSolver', scv=0, pcv=0, ns=4)
-    print SIK
+    cmds.select(fromJnt, toJnt, r=1)
+    SIK = cmds.ikHandle(toJnt, fromJnt, sol='ikSplineSolver', scv=0, pcv=0, ns=4, n=fromJnt + '_SIK')
     cmds.setAttr(SIK[0] + '.v', 0)
+    cmds.select(fromJnt, r=1)
 
 
 def cSelToJoints(*args):
@@ -934,6 +1042,22 @@ def cSelToJoints(*args):
                 jntList.append(jnt)
 
     cmds.select(jntList, r=1)
+    return jntList
+
+
+def cJSChainFromJnts(*args):
+    jntList = []
+    mySel = cmds.ls(os=1, fl=1)
+
+    cmds.select(clear=1)
+    
+    for i in range(0, len(mySel), 1):
+        pos = cmds.xform(mySel[i], translation=1, ws=1, q=1)
+        jnt = cmds.joint(p=(pos[0], pos[1], pos[2]), n='jnt_' + str(i+1) + '_JS')
+        jntList.append(jnt)
+
+    cmds.joint(jntList[0], e=1, oj='xyz', secondaryAxisOrient='yup', ch=0, zso=1) 
+
 
 
 def cSelToType(objType, *args):
@@ -1037,6 +1161,18 @@ def cJntInCenter(*args):
     centerPos = tkGetCenter(CRV, 'nurbs', 'locator')
 
 
+def cJntFromVertex(*args):
+    mySel = cmds.ls(os=1, fl=1)
+
+    for i in range(0, len(mySel), 1):
+        cmds.select(clear=1)
+        vtx = mySel[i]
+        baseName = vtx.split('.')[0]
+        pos = cmds.xform(vtx, ws=1, t=1, q=1)
+        jnt = cmds.joint(p=(pos[0], pos[1], pos[2]), n=baseName + '_' + str(i) + '_jnt')
+
+
+
 def cHalfwayJnt(directin, *args):
     """
     Place an additional halfway joint 
@@ -1066,6 +1202,8 @@ def cHalfwayJnt(directin, *args):
             cmds.setAttr(jnt + '.jointOrientX', ori[0][0])
             cmds.setAttr(jnt + '.jointOrientY', ori[0][1])
             cmds.setAttr(jnt + '.jointOrientZ', ori[0][2])
+
+
 
 
 
@@ -1201,7 +1339,7 @@ def cMakeCtrl(sel, ctrlShape, *args):
     cmds.select(CON, r=1)
     cScaleIcon()
 
-    print 'delete me...'
+    # print 'delete me...'
     if cmds.objExists('deleteMe'):
         cmds.delete('deleteMe')
 
@@ -1264,7 +1402,7 @@ def cScaleIcon(*args):
 
         crvs = cmds.listRelatives(sel, s=1, type='nurbsCurve')
         if crvs:
-            print 'scale...'
+            # print 'scale...'
             degree = cmds.getAttr(crvs[0] + ".degree")
             spans = cmds.getAttr(crvs[0] + ".spans")
             form = cmds.getAttr(crvs[0] + ".form")
@@ -1335,6 +1473,7 @@ def cAddLostAttr(attrType, state, *args):
 
     for attrName in attrList:
         for sel in mySel:
+            print attrName
             cAddAttrib(sel, attrType, attrName, 'x', 'x', 'x', state)
 
 
@@ -1346,15 +1485,77 @@ def cConnectLost(attrName, *args):
 
     Input
         attrName:      attribute
+
+    naming convention for keep volume:
+        JS chain:       jnt_1_JS 
+                        jnt_2_JS 
+                        jnt_3_JS
+        mGear chain:    bodyLoop_1_center_grp_nul
+                        bodyLoop_2_center_grp_nul
+                        bodyLoop_3_center_grp_nul
+        main Con Attr:  keepVolume
     """
 
+
     mySel = cmds.ls(os=1)
+
+    if attrName == 'keepVolume':
+        jntsJS = cmds.ls('*_JS', type = "joint")
+        print jntsJS
+        mainCon = cmds.ls('lamprey_main_con')[0]
+        print mainCon
+
+        if mainCon and jntsJS:
+            state = cmds.attributeQuery(attrName, node=mainCon, ex=1)
+            if state == 0:
+                cAddAttrib(mainCon, 'double', attrName, 0, 1, 0, 'add')
+            for JS in jntsJS:
+                splits = JS.split('_')
+                counter = splits[1]
+                if not counter == 1:
+                    bc = cmds.createNode('blendColors', n='bc_volume' + counter)
+                    cmds.connectAttr(mainCon + '.keepVolume', bc + '.blender')
+
+                    cmds.connectAttr('jnt_' + counter + '_JS.scaleX', bc + '.color1R')
+                    cmds.connectAttr('jnt_' + counter + '_JS.scaleY', bc + '.color1G')
+                    cmds.connectAttr('jnt_' + counter + '_JS.scaleZ', bc + '.color1B')
+
+                    cmds.setAttr(bc + '.color2R', 1)
+                    cmds.setAttr(bc + '.color2G', 1)
+                    cmds.setAttr(bc + '.color2B', 1)
+
+                    cmds.connectAttr(bc + '.outputR', 'bodyLoop_' + counter + '_center_grp_nul.scaleX', f=1)
+                    cmds.connectAttr(bc + '.outputG', 'bodyLoop_' + counter + '_center_grp_nul.scaleY', f=1)
+                    cmds.connectAttr(bc + '.outputB', 'bodyLoop_' + counter + '_center_grp_nul.scaleZ', f=1)
+
+            cmds.textField('tfFeedback', tx = 'Keep Volume complete', e=1) 
+
+
+
+
+
     for sel in mySel:
         splits = sel.split('_')
         baseName = splits[0] + '_' + splits[1] + '_'
+        counter = splits[1]
 
-        print 'baseName: ' + str(baseName)
+        # print 'baseName: ' + str(baseName)
 
+        if attrName == 'contract':
+            cAddAttrib(sel, 'double', attrName, 'x', 'x', 0, 'add')
+            mult = cmds.createNode('multiplyDivide', n='contractMult_' + counter)
+            cmds.setAttr(mult + '.input2X', .01)
+            cmds.setAttr(mult + '.operation', 1)
+
+            cmds.connectAttr(sel + '.' + attrName, mult + '.input1X')
+            cmds.connectAttr(mult + '.outputX', splits[0] + '_' + counter + '_center_grp.tx')
+
+            cmds.textField('tfFeedback', tx = 'Contract added', e=1) 
+
+
+
+
+        
         if attrName == 'ringScale':
             # check attrName
             cAddAttrib(sel, 'double', 'ringScale', 'x', 'x', 1, 'add')
@@ -1365,6 +1566,10 @@ def cConnectLost(attrName, *args):
                 cmds.connectAttr(sel + '.' + attrName, driven + '.scaleY')
                 cmds.connectAttr(sel + '.' + attrName, driven + '.scaleZ')
 
+            cmds.textField('tfFeedback', tx = 'Ring Scale added', e=1) 
+
+
+        
         if attrName == 'details':
             # check attrName
             cAddAttrib(sel, 'bool', 'details', 'x', 'x', 1, 'add')
@@ -1373,6 +1578,8 @@ def cConnectLost(attrName, *args):
             for driven in drivenList: 
                 cmds.connectAttr(sel + '.' + attrName, driven + '.v')
 
+            cmds.textField('tfFeedback', tx = 'Details added', e=1) 
+            
             # driver:
             # loop_1_crv_center_grp_con
             
@@ -1387,52 +1594,6 @@ def cConnectLost(attrName, *args):
             # loop_1_crv_6_jnt_half_con 
 
 
-
-def cConnectLost_OLD(attrName, *args):
-    """
-    connect attributes to selection
-    Eg to connect ringScale to all child`s scale
-    so far: ringScale, details 
-
-    Input
-        attrName:      attribute
-    """
-
-    mySel = cmds.ls(os=1)
-    for sel in mySel:
-        splits = sel.split('_')
-        baseName = splits[0] + '_' + splits[1]
-
-        if attrName == 'ringScale':
-            # check attrName
-            cAddAttrib(sel, 'double', 'ringScale', 'x', 'x', 1, 'add')
-
-            drivenList = cmds.ls(baseName + '*_center_grp', type='transform')
-            for driven in drivenList: 
-                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleX')
-                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleY')
-                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleZ')
-
-        if attrName == 'details':
-            # check attrName
-            cAddAttrib(sel, 'bool', 'details', 'x', 'x', 1, 'add')
-
-            drivenList = cmds.ls(baseName + '*_half_con', type='transform')
-            for driven in drivenList: 
-                cmds.connectAttr(sel + '.' + attrName, driven + '.v')
-
-            # driver:
-            # loop_1_crv_center_grp_con
-            
-            # driven:
-            # loop_1_crv_4_jnt_half_con 
-            # loop_1_crv_3_jnt_half_con 
-            # loop_1_crv_2_jnt_half_con 
-            # loop_1_crv_1_jnt_half_con 
-            # loop_1_crv_0_jnt_half_con 
-            # loop_1_crv_7_jnt_half_con 
-            # loop_1_crv_5_jnt_half_con 
-            # loop_1_crv_6_jnt_half_con 
 
 
 def cIncrementPos(fieldDriven, fieldPos, fieldCheck, *args):
@@ -1463,26 +1624,6 @@ def cIncrementPos(fieldDriven, fieldPos, fieldCheck, *args):
     for i in range(countPos+1, len(sp)-1, 1):
         text += sp[i] + '_'
     
-    text += sp[-1]
-
-    cmds.textField(fieldCheck, tx=text, e=1)
-
-
-def cIncrementPos_OLD(fieldDriven, fieldPos, fieldCheck, *args):
-    """
-    check increments position 
-    """
-
-    text = ''
-    driven = cmds.textField(fieldDriven, tx=1, q=1)
-    countPos = cmds.intField(fieldPos, v=1, q=1)
-    sp = driven.split('_')
-    for i in range(0, countPos-1, 1):
-        text += sp[i] + '_'
-    text += ' <count> _'
-
-    for i in range(countPos+1, len(sp)-1, 1):
-        text += sp[i] + '_'
     text += sp[-1]
 
     cmds.textField(fieldCheck, tx=text, e=1)
@@ -1718,9 +1859,13 @@ def cFindClosestOnMesh(*args):
     Find the cloest point on a mesh
 
     """
+    posTip = []
+    posBase = []
     counter = cmds.intField('iIndex', v=1, q=1)
     mesh = cmds.textField('tfTargetMesh', tx=1, q=1)
     mySel = cmds.ls(sl=1, fl=1)
+    tipState = cmds.checkBox('cbEnableTipVertex', v=1, q=1)
+    tipVertexId = cmds.intField('iNthTipVertexId', v=1, q=1)
 
     # title = 'win_Progress'
     # progressBarName = 'pProgress'
@@ -1730,11 +1875,16 @@ def cFindClosestOnMesh(*args):
     for vtx in mySel:
         # cmds.progressBar(progressBarName, e=1, step=1)
         baseName = vtx.split('.')[0]
-        posTip = cmds.xform(vtx, ws=1, t=1, q=1)
+        posBase = cmds.xform(vtx, ws=1, t=1, q=1)
+        if tipState == 0:
+            posTip = posBase
+        else:
+            posTip = cmds.xform(baseName + '.vtx[' + str(tipVertexId) + ']', ws=1, t=1, q=1)
+
         LC_in = cmds.spaceLocator(n='deleteMe_LC', p=(0,0,0))[0]
         LC_out =  cmds.spaceLocator(n='deleteMe_LC_out', p=(0,0,0))[0]
 
-        cmds.setAttr(LC_in + '.translate', posTip[0], posTip[1], posTip[2])
+        cmds.setAttr(LC_in + '.translate', posBase[0], posBase[1], posBase[2])
         cp = cmds.createNode('closestPointOnMesh', n='cp_tk')
 
         cmds.connectAttr(mesh + '.outMesh', cp + '.inMesh')
@@ -1743,9 +1893,9 @@ def cFindClosestOnMesh(*args):
         u = cmds.getAttr(cp + '.u')
         v = cmds.getAttr(cp + '.v')
 
-        pos = cmds.xform(LC_out, ws=1, t=1, q=1)
+        posBase = cmds.xform(LC_out, ws=1, t=1, q=1)
 
-        cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip)
+        cCreateFollicle(mesh, baseName, counter, u, v, posBase, posTip)
 
         cmds.delete(cp, LC_in, LC_out)
         counter +=1 
@@ -1753,9 +1903,10 @@ def cFindClosestOnMesh(*args):
     # cmds.deleteUI(title)
 
 
-def cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip, *args):
+def cCreateFollicle(mesh, baseName, counter, u, v, posBase, posTip, *args):
     """
     create a follicle on the given mesh at the give uv ccord
+    add a 2 joint chain from base to tip
 
     Input
     mesh:
@@ -1763,7 +1914,7 @@ def cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip, *args):
     counter
     u
     v
-    pos
+    posBase
     posTip
 
 
@@ -1791,7 +1942,7 @@ def cCreateFollicle(mesh, baseName, counter, u, v, pos, posTip, *args):
     cmds.setAttr(fol + '.parameterV', v)
 
     cmds.select(clear=1)
-    jntBase = cmds.joint(p=(pos[0], pos[1], pos[2]), n=(baseName + '_' + str(counter) + '_base_jnt'))
+    jntBase = cmds.joint(p=(posBase[0], posBase[1], posBase[2]), n=(baseName + '_' + str(counter) + '_base_jnt'))
     jntTip = cmds.joint(p=(posTip[0], posTip[1], posTip[2]), n=(baseName + '_' + str(counter) + '_tip_jnt'))
 
     cmds.select(jntBase, r=1)
@@ -1811,8 +1962,18 @@ def cGetVertexID(field, *args):
     cmds.intField(field, v=id, e=1)
 
 
+def cEnableTipVertex(*args):
+    state = cmds.checkBox('cbEnableTipVertex', v=1, q=1)
+    if state == 1:
+        cmds.intField('iNthTipVertexId', ed=state, e=1, bgc=(0,0,0))
+    else:
+        cmds.intField('iNthTipVertexId', ed=state, e=1, bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 
-def cSelNthVertex(*args):
+
+
+
+
+def cSelNthVertex(field, *args):
     """
     Select the first nth of every poly shell
     To eg select one cv of every tooth of a teeth
@@ -1822,12 +1983,12 @@ def cSelNthVertex(*args):
     vtxList = []
     vtxListCollect = []
      
-    nth = cmds.intField('iNthVertexId', v=1, q=1)
+    nth = cmds.intField(field, v=1, q=1)
     teethMesh = cmds.textField('tfTeethMesh', tx=1, q=1)
     numVtx = cmds.polyEvaluate(teethMesh, vertex=1)
 
     # title = 'win_Progress'
-    # progressBarName = 'pProgress'
+    # progressBarName = 'pProgress'y
     # winProgress(title, progressBarName, numVtx)
 
     for i in range(0, numVtx, 1):
@@ -1890,9 +2051,10 @@ def cFindClosestBatch(*args):
 
     for sel in curSel:
         cmds.progressBar(progressBarName, e=1, step=1)
+        print 'sel: ' + str(sel)
         cmds.select(sel, r=1)
         cFillField('tfTeethMesh')
-        cSelNthVertex()
+        cSelNthVertex('iNthVertexId')
         cFindClosestOnMesh()
         batchIndex +=1
         cmds.intField('iIndex', v=batchIndex, e=1)
@@ -1901,7 +2063,25 @@ def cFindClosestBatch(*args):
     cmds.select(curSel, r=1)
 
 
-def cBatchSkin(*args):
+def cBatchSkin(prefix, *args):
+    bindJnts = []
+    curSel = cmds.ls(os=1)
+
+    for sel in curSel:
+        if prefix == 'identical':
+            bindJnts = cmds.ls(sel + '*' + 'tip_jnt')
+        if prefix == 'differs':
+            noNmSpc = sel.split(':')[-1]
+            bindJnts = cmds.ls(noNmSpc + '*' + 'tip_jnt')
+
+        if len(bindJnts) == 1:
+            print sel
+            print bindJnts[0]
+            cmds.skinCluster(sel, bindJnts[0], tsb=1)
+
+
+
+def cBatchSkin_OLD(*args):
     curSel = cmds.ls(os=1)
     
     for sel in curSel:
@@ -1944,6 +2124,11 @@ colUI4            = [0.02, 0.27, 0.26]
 colUI5            = [0.02, 0.30, 0.28]
 colUI6            = [0.02, 0.33, 0.32]
 
+colRed3            = [0.30, 0.18, 0.20]
+colRed4            = [0.40, 0.18, 0.20]
+colRed5            = [0.46, 0.18, 0.20]
+colRed6            = [0.50, 0.14, 0.16]
+
 colYellow           = [0.50, 0.45, 0.00]
 colYellow2          = [0.42, 0.37, 0.00]
 colYellow3          = [0.39, 0.34, 0.00]
@@ -1968,7 +2153,8 @@ cmds.button(l='Jnt Size', c=partial(cJointSize), bgc=(colBlue[0], colBlue[1], co
 cmds.button(l='To Jnts', c=partial(cSelToJoints), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='OFF', c=partial(cAddNullGrp), bgc=(colBlue[0], colBlue[1], colBlue[2]))
 cmds.button(l='Order', c=partial(cReOrder), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='Empty Grps', c=partial(cRemoveEmptyTransforms), bgc=(colRed[0], colRed[1], colRed[2]))
+# cmds.button(l='Empty Grps', c=partial(cRemoveEmptyTransforms), bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.button(l='Foll', c=partial(cHideType, 'follicle'), bgc=(colYellow[0], colYellow[1], colYellow[2]))
 cmds.button(l='SE', c=partial(cClearSE), bgc=(colRed[0], colRed[1], colRed[2]))
 cmds.setParent(top=1)
 
@@ -2023,12 +2209,17 @@ cmds.button(l='Adjust Pivot', c=partial(cAdjustPivot), bgc=(colYellow2[0], colYe
 
 
 cmds.setParent('layAdj')
-cmds.frameLayout('flJntOperations', l='--------------- MAKE JOINT CHAINS --------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.rowColumnLayout(nc=4, cw=[(1, 80), (2, 110), (3, 140), (4, 110)])
-cmds.button(l='Jnts To Chain', c=partial(cJntsToChain, 'parent'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-cmds.button(l='Objs To New Chain', c=partial(cObjToChain, 'new'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='Jnts From Sel And Parent', c=partial(cJntsFromSelection, 1), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.frameLayout('flJntOperations', l='--------------- MAKE JOINTS -------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.rowColumnLayout(nc=2, cw=[(1, 130), (2, 310)])
+cmds.button(l='JS Chain From Chain', c=partial(cJSChainFromJnts), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Halfway Joint Up', c=partial(cHalfwayJnt, 'up'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+
+cmds.setParent('layAdj')
+cmds.rowColumnLayout(nc=3, cw=[(1, 130), (2, 180), (3, 130)])
+cmds.button(l='Jnts To Chain', c=partial(cJntsToChain, 'parent'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Jnts From Sel And Parent', c=partial(cJntsFromSelection, 1), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Objs To New Chain', c=partial(cObjToChain, 'new'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Jnts From Vertices', c=partial(cJntFromVertex, 'new'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.setParent('..')
 
 
@@ -2057,10 +2248,9 @@ cmds.floatField('fScaleIcon', v=.1, ed=1, pre=2, bgc=(0,0,0))
 
 cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
-cmds.button(l='Sel Under New Ctrl (guide cons)', c=partial(cAddCtrlToSel,'sel_under_ctrl', 'nail'), bgc=(colYellow[0], colYellow[1], colYellow[2]))
-cmds.button(l='Parent Ctrl To Sel (half cons)', c=partial(cAddCtrlToSel,'parent', 'cube'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Sel Under New Ctrl (guide cons)', c=partial(cAddCtrlToSel,'sel_under_ctrl', 'nail'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
+cmds.button(l='Parent Ctrl To Sel (half cons)', c=partial(cAddCtrlToSel,'parent', 'cube'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
 
-cmds.button(l='Multi Parent', c=partial(cMultiParent), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.button(l='Add Ctrl At Sel', c=partial(cAddCtrlToSel, 'add', 'cube'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 
 
@@ -2087,7 +2277,7 @@ cmds.button(l='Offset CVs', c=partial(cOffsetCVs), bgc=(colYellow4[0], colYellow
 
 
 cmds.setParent(top=1)
-cmds.frameLayout('flTeeth', l='TEETH SETUP', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.frameLayout('flTeeth', l='TEETH SETUP', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
 cmds.columnLayout('layAdjTeeth', adj=1)
 cmds.rowColumnLayout(nc=5, cw=[(1, 90), (2, 90), (3, 30), (4,140), (5,90)])
@@ -2101,11 +2291,22 @@ cmds.textField('tfLocatorUp', tx='mainTeeth_LC', ed=0, bgc=(0,0,0))
 cmds.setParent('layAdjTeeth')
 cmds.rowColumnLayout(nc=5, cw=[(1, 90), (2, 90), (3, 90), (4,50), (5,120)])
 cmds.button(l='Teeth Mesh >>', c=partial(cFillField, 'tfTeethMesh'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.textField('tfTeethMesh', tx='lam_01:fangLarge_001_geo', ed=0, bgc=(0,0,0))
+cmds.textField('tfTeethMesh', tx='lam_01:fangLarge_009_geo', ed=0, bgc=(0,0,0))
 cmds.button(l='Nth Vertex Id >>', c=partial(cGetVertexID, 'iNthVertexId'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 # cmds.text('Nth Vertex Id', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.intField('iNthVertexId', v=19)
-cmds.button(l='Select Nth Vertex', c=partial(cSelNthVertex), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.intField('iNthVertexId', v=11)
+cmds.button(l='Select Nth Vertex', c=partial(cSelNthVertex, 'iNthVertexId'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+
+cmds.setParent('layAdjTeeth')
+cmds.rowColumnLayout(nc=5, cw=[(1, 30), (2, 150), (3, 90), (4,50), (5,120)])
+cmds.text(' ', bgc=(colYellow5[0], colYellow5[1], colYellow5[2])) 
+cmds.checkBox('cbEnableTipVertex', l='Enable Tip Vertex', v=0, cc=partial(cEnableTipVertex), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Nth Vertex Id >>', c=partial(cGetVertexID, 'iNthTipVertexId'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.intField('iNthTipVertexId', v=26, ed=0, bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Select Nth Vertex', c=partial(cSelNthVertex, 'iNthTipVertexId'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+
 
 cmds.setParent('layAdjTeeth')
 cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 90), (3, 260)])
@@ -2115,16 +2316,15 @@ cmds.button(l='Each Vertex To JNTS On Mesh', c=partial(cFindClosestOnMesh), bgc=
 
 cmds.setParent('layAdjTeeth')
 # cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 90), (3, 260)])
-cmds.rowColumnLayout(nc=2, cw=[(1, 180), (2, 260)])
-cmds.button(l='Batch Skin', c=partial(cBatchSkin), bgc=(colGreen[0], colGreen[1], colGreen[2]))
 cmds.button(l='Batch - Same Vtx Count / Order Required!', c=partial(cFindClosestBatch), bgc=(colRed[0], colRed[1], colRed[2]))
 
 
 
 
 
+
 cmds.setParent(top=1)
-cmds.frameLayout('flAttributesAndConnections', l='ATTRIBUTES AND CONNECTIONS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.frameLayout('flAttributesAndConnections', l='ATTRIBUTES AND CONNECTIONS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
 cmds.columnLayout('layAdjAttr', adj=1)
 cmds.rowColumnLayout(nc=6, cw=[(1, 90), (2, 90), (3, 60), (4, 60), (5, 60), (6, 80)])
@@ -2144,16 +2344,16 @@ cmds.button(l='Delete Attr', c=partial(cAddLostAttr, 'any', 'remove'), bgc=(colR
 cmds.setParent('layAdjAttr')
 cmds.frameLayout('fPresets', l='--------------- LOST CONNECTIONS --------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.rowColumnLayout(nc=3, cw=[(1, 110), (2, 110), (3, 220)])
-cmds.button(l='Setup Ring Scale', c=partial(cConnectLost, 'ringScale'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-cmds.button(l='Setup Details', c=partial(cConnectLost, 'details'), bgc=(colYellow2[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Ring Scale', c=partial(cConnectLost, 'ringScale'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Details', c=partial(cConnectLost, 'details'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='Add Geo Chooser', c=partial(cAddGeoAttribute), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
 
 # cmds.setParent('layAdjAttr')
 # cmds.button(l='nmSpc >>', c=partial(cFillField, 'tfNmSpc'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 # cmds.textField('tfNmSpc', tx='', bgc=(0,0,0))
-cmds.text(' ', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.text(' ', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Contract', c=partial(cConnectLost, 'contract'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Keep Volume', c=partial(cConnectLost, 'keepVolume'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Remove NmSpc From Selection', c=partial(cRemoveFromNmSpc), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 
 
@@ -2246,29 +2446,33 @@ cmds.setParent(top=1)
 cmds.frameLayout('flAttributes', l='LOCK AND FREE ATTRIBUTES', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
 cmds.columnLayout('layAdjLock', adj=1)
-cmds.text('lock and hide', bgc=(colUI6[0], colUI6[1], colUI6[2]))
-cmds.rowColumnLayout(nc=4, cw=[(1, 132), (2, 132), (3, 132), (4, 44)])
-cmds.button(l='translate', c=partial(cLockAndHide, 0, 'translate'), bgc=(colUI3[0], colUI3[1], colUI3[2]))
-cmds.button(l='rotate', c=partial(cLockAndHide, 0, 'rotate'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
-cmds.button(l='scale', c=partial(cLockAndHide, 0, 'scale'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
-cmds.button(l='vis', c=partial(cLockAndHide, 0, 'v'), bgc=(colUI6[0], colUI6[1], colUI6[2]))
-cmds.setParent('..')
+cmds.rowColumnLayout(nc=2, cw=[(1, 396),(2, 44)])
+cmds.text('lock and hide', h=14, bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.button(l='all', h=14, c=partial(cLockAndHide, 0, 'all'), bgc=(colRed6[0], colRed6[1], colRed6[2]))
 
+
+cmds.setParent('layAdjLock')
+cmds.rowColumnLayout(nc=4, cw=[(1, 132), (2, 132), (3, 132), (4, 44)])
+cmds.button(l='translate', c=partial(cLockAndHide, 0, 'translate'), bgc=(colRed3[0], colRed3[1], colRed3[2]))
+cmds.button(l='rotate', c=partial(cLockAndHide, 0, 'rotate'), bgc=(colRed4[0], colRed4[1], colRed4[2]))
+cmds.button(l='scale', c=partial(cLockAndHide, 0, 'scale'), bgc=(colRed5[0], colRed5[1], colRed5[2]))
+cmds.button(l='vis', c=partial(cLockAndHide, 0, 'v'), bgc=(colRed6[0], colRed6[1], colRed6[2]))
+cmds.setParent('layAdjLock')
 
 cmds.rowColumnLayout(nc=10, cw=[(1, 44), (2, 44), (3, 44), (4, 44), (5, 44), (6, 44), (7, 44), (8, 44), (9, 44), (10, 44)])
-cmds.button(l='tx', c=partial(cLockAndHide, 0, 'tx'), bgc=(colUI3[0], colUI3[1], colUI3[2]))
-cmds.button(l='ty', c=partial(cLockAndHide, 0, 'ty'), bgc=(colUI3[0], colUI3[1], colUI3[2]))
-cmds.button(l='tz', c=partial(cLockAndHide, 0, 'tz'), bgc=(colUI3[0], colUI3[1], colUI3[2]))
-cmds.button(l='rx', c=partial(cLockAndHide, 0, 'rx'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
-cmds.button(l='ry', c=partial(cLockAndHide, 0, 'ry'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
-cmds.button(l='rz', c=partial(cLockAndHide, 0, 'rz'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
-cmds.button(l='sx', c=partial(cLockAndHide, 0, 'sx'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
-cmds.button(l='sy', c=partial(cLockAndHide, 0, 'sy'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
-cmds.button(l='sz', c=partial(cLockAndHide, 0, 'sz'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
-cmds.button(l='sel', c=partial(cLockAndHide, 0, 'sel'), bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.button(l='tx', c=partial(cLockAndHide, 0, 'tx'), bgc=(colRed3[0], colRed3[1], colRed3[2]))
+cmds.button(l='ty', c=partial(cLockAndHide, 0, 'ty'), bgc=(colRed3[0], colRed3[1], colRed3[2]))
+cmds.button(l='tz', c=partial(cLockAndHide, 0, 'tz'), bgc=(colRed3[0], colRed3[1], colRed3[2]))
+cmds.button(l='rx', c=partial(cLockAndHide, 0, 'rx'), bgc=(colRed4[0], colRed4[1], colRed4[2]))
+cmds.button(l='ry', c=partial(cLockAndHide, 0, 'ry'), bgc=(colRed4[0], colRed4[1], colRed4[2]))
+cmds.button(l='rz', c=partial(cLockAndHide, 0, 'rz'), bgc=(colRed4[0], colRed4[1], colRed4[2]))
+cmds.button(l='sx', c=partial(cLockAndHide, 0, 'sx'), bgc=(colRed5[0], colRed5[1], colRed5[2]))
+cmds.button(l='sy', c=partial(cLockAndHide, 0, 'sy'), bgc=(colRed5[0], colRed5[1], colRed5[2]))
+cmds.button(l='sz', c=partial(cLockAndHide, 0, 'sz'), bgc=(colRed5[0], colRed5[1], colRed5[2]))
+cmds.button(l='sel', c=partial(cLockAndHide, 0, 'sel'), bgc=(colRed6[0], colRed6[1], colRed6[2]))
 
 cmds.setParent('..')
-cmds.text('unlock and show', bgc=(colUI6[0], colUI6[1], colUI6[2]))
+cmds.text('free and show', h=14, bgc=(colUI6[0], colUI6[1], colUI6[2]))
 
 cmds.rowColumnLayout(nc=10, cw=[(1, 44), (2, 44), (3, 44), (4, 44), (5, 44), (6, 44), (7, 44), (8, 44), (9, 44), (10, 44)])
 cmds.button(l='tx', c=partial(cLockAndHide, 1, 'tx'), bgc=(colUI3[0], colUI3[1], colUI3[2]))
@@ -2288,6 +2492,26 @@ cmds.button(l='translate', c=partial(cLockAndHide, 1, 'translate'), bgc=(colUI3[
 cmds.button(l='rotate', c=partial(cLockAndHide, 1, 'rotate'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
 cmds.button(l='scale', c=partial(cLockAndHide, 1, 'scale'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
 cmds.button(l='vis', c=partial(cLockAndHide, 1, 'v'), bgc=(colUI6[0], colUI6[1], colUI6[2]))
+
+
+
+
+cmds.setParent(top=1)
+cmds.frameLayout('flMisc', l='MISC HELPER', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.columnLayout('layMisc', adj=1)
+
+cmds.rowColumnLayout(nc=3, cw=[(1, 120), (2, 180), (3, 140)])
+cmds.button(l='Batch Skin (identical)', c=partial(cBatchSkin, 'identical'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
+cmds.button(l='Batch Skin (geo differs from jnts)', c=partial(cBatchSkin, 'differs'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
+cmds.button(l='cvWrap (Last: Wrapper)', c=partial(cCvWrap), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Multi Parent', c=partial(cMultiParent), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Multi BlendShape', c=partial(cBlendShape), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Skin Whiskers', c=partial(cSkinWhiskers), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+cmds.setParent('layMisc')
+cmds.rowColumnLayout(nc=3, cw=[(1, 220), (2, 220)])
+cmds.button(l='Match Orient (second like first)', c=partial(cMatchOrient, 'secondLikeFirst'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
+cmds.button(l='Match Orient (child like parent)', c=partial(cMatchOrient, 'childLikeParent'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
 
 
 

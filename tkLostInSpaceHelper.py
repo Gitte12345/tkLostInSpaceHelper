@@ -41,7 +41,7 @@ pipeline:
 2.  Start ID
 3.  Crv with new start
 4.  Just place (8 - 16) and adjust center joint
-5.  Halfway joint up for stars
+5.  "Split Joint At Half" for stars (last joint in chain)
 6.  Select groups and add nail control: "Sel Under New Control (guide cons)"
 7.  Select halfway joints (down) and "Parent Ctrl To Sel (half cons)"
 8.  move vertices out (offset CVs, x)
@@ -67,10 +67,11 @@ teeth:
 Hero teeth:
 1. Enable tip vertex on to get nice long joints from base to tip
 2. Select base joints and use "Parent Ctrl To Sel (half cons)"
-3. mainTeeth_CON 
+3. Select teeth geo and "Batch Skin(identical)"
+4. mainTeeth_CON 
 ... spread --> OFF.rz
 ... expand --> expandMult --> jntBase.tx
-4. Parent mainTeeth_CON under bodyLoop_1 (head)
+5. Parent mainTeeth_CON under bodyLoop_1 (head)
 
 Keep volume:
 1.  Build a second joint chain (JS Chain From Chain)
@@ -80,11 +81,14 @@ Keep volume:
 5.  Keep Volume to add functionality
 
 Valve:
-1. lowresgeo, skin
-2. cvWrap to bs geo
-3. bs to skinned geo
+1.  lowresgeo, skin
+2.  cvWrap to bs geo
+3.  bs to skinned geo
 
-
+Orient Tipjoints:
+1.  Select Tipjoints
+2.  "Orient Sel Jnts To Parent" orients all joints to the parent
+... The Joints can then be rotated all in the same direction
 
 
 """
@@ -220,6 +224,15 @@ def cAddNullGrp(*args):
 
 
 def cHideType(type, *args):
+    """
+    Hide specific types, eg all follicles in a scene
+
+    Input
+        objType:    spaceLocator
+        field:      filed to fill in 
+    """    
+
+
     mySel = cmds.ls(type='follicle')
 
     state = cmds.getAttr(mySel[0] + '.v')
@@ -229,14 +242,43 @@ def cHideType(type, *args):
     cmds.textField('tfFeedback', tx = 'Set all ' + str(type) + ' to ' + str(1-state), e=1)
 
 
-def cCvWrap(*args):
+def cCvWrap(action, *args):
+    """
+    cvWrap multiple objects 
+    delete cvWrap from selected objects, hierarchy down
+
+    Input
+        action:     create
+                    delete
+        field:      filed to fill in 
+    """    
+    cvWrapList = []
     mySel = cmds.ls(os=1, fl=1)
-    wrapper = mySel[-1]
-    for i in range(0,len(mySel)-1, 1):
-        cmds.cvWrap(mySel[i], wrapper)
+    
+    if action == 'create':
+        wrapper = mySel[-1]
+        for i in range(0,len(mySel)-1, 1):
+            cmds.cvWrap(mySel[i], wrapper)
+
+    if action == 'delete':
+        childs = cmds.listRelatives(mySel, ad=1, type='mesh')
+        for child in childs:
+            conns = cmds.listConnections(child, s=1, t='cvWrap')
+            if conns:
+                for node in conns:
+                    cvWrapList.append(node)
+
+        cmds.delete(cvWrapList)
+
+
 
 
 def cBlendShape(*args):
+    """
+    Create multiple blendShapes
+
+    """    
+
     mySel = cmds.ls(os=1, fl=1)
     amount = len(mySel)/2
     for i in range(0, amount, 1):
@@ -245,6 +287,14 @@ def cBlendShape(*args):
 
 
 def cMatchOrient(type, *args):
+    """
+    Match orientation on selection
+
+    Input
+        type:   childLikeParent
+                secondLikeFirst
+    """    
+
     mySel = cmds.ls(os=1, fl=1)
 
     if type == 'childLikeParent':
@@ -261,6 +311,14 @@ def cMatchOrient(type, *args):
 
 
 def cSkinWhiskers(*args):
+    """
+    skin whiskers (lost specific)
+
+    Input
+        type:   childLikeParent
+                secondLikeFirst
+    """ 
+
     # lam_01:whisker_001_geo
     mySel = cmds.ls(os=1, fl=1)
 
@@ -283,8 +341,161 @@ def cSkinWhiskers(*args):
         cmds.skinCluster('wskLoop_' + str(i+1), bindJnts, tsb=1, dr=2, mi=2, bindMethod=1)
 
 
+def cCopySkinWeights(type, *args):
+    """
+    Copy skin weights 
+
+    Input
+        type:   last
+                    copy skin weights from the last in selection
+                    to all the other 
+                each
+                    copy skin weights from second half to the first half
+
+    """     
+    mySel = cmds.ls(os=1, fl=1)
+
+    if type == 'last':
+        for i in range(0, len(mySel)-1, 1):
+            print 'Copy skin weights from ' + str(mySel[-1]) + ' --> ' + str(mySel[i])
+            cmds.select(mySel[-1], mySel[i], r=1)
+            cmds.copySkinWeights(noMirror=1, surfaceAssociation='closestPoint', influenceAssociation = ('label', 'closestJoint'))
+
+        cmds.textField('tfFeedback', tx='skinWeights copied from ' + str(mySel[-1]), e=1)
+        
+    if type == 'each':
+        half = int(len(mySel)/2)
+        for i in range(0, len(mySel)/2, 1):
+            cmds.select(mySel[i], mySel[half+i], r=1)
+            cmds.copySkinWeights(noMirror=1, surfaceAssociation='closestPoint', influenceAssociation = ('label', 'closestJoint'))
+
+        cmds.textField('tfFeedback', tx='skinWeights copied')
 
 
+
+
+def cGetSkinCluster(*args):
+    """
+    Get skin cluster fom selection 
+    and fill in UI 
+
+    """ 
+
+    skinCluster = []
+    mySel = cmds.ls(os=1, fl=1)
+    skinCluster = mel.eval('findRelatedSkinCluster("' + str(mySel[0]) + '")')
+    if skinCluster:
+        cmds.textField('tfSkinCluster', tx=skinCluster, e=1)
+
+
+def cConnectAttr(*args):
+    """
+    Connect Attributes (lost specific) 
+
+    """ 
+
+    attrList = ['wEnv', 'wAmplitude', 'wSpeed', 'frameOffset', 'ringScale', 'details', 'contract', 'tx', 'ty', 'tz', 'rx', 'ry', 'rz', 'sx', 'sy', 'sz']
+    mySel = cmds.ls(os=1, fl=1)
+    for sel in mySel:
+        aim = sel.replace('bodyLoop', 'staticBodyLoop')
+        for attrName in attrList:
+            attrExist = maya.cmds.attributeQuery(attrName, node=sel, exists=True)
+            if attrExist:
+                cmds.connectAttr(sel + '.' + attrName, aim + '.' + attrName, f=1)
+                print (sel + '.' + attrName + ' --> ' +  aim + '.' + attrName)
+
+
+def cBackToOrigShape(type, *args):
+    """
+    delete intermediate shapes fromselection 
+
+    Input
+        type:   reference
+                    for referenced files that cannot be renamed 
+                original
+                    delete intermediate shapes
+                    and rename back to default shape
+
+    """ 
+
+    mySel = cmds.ls(os=1, fl=1)
+    for sel in mySel:
+        shps = cmds.listRelatives(sel, s=1, type='mesh')
+
+        if type == 'reference':
+            for shp in shps:
+                if shp == sel + 'Shape':
+                    cmds.setAttr(shp + '.intermediateObject', 0)
+                else:
+                    cmds.delete(shp)
+
+        if type == 'original':
+            for shp in shps:
+                state = cmds.getAttr(shp + '.intermediateObject')
+                if state == 1:
+                    cmds.delete(shp)
+
+            shps = cmds.listRelatives(sel, s=1, type='mesh')
+            cmds.rename(shps[0], sel + 'Shape')
+
+
+def cLRA(type, *args):
+    """
+    actions on Local rotation axis
+
+    Input
+        type:   show
+                    show LRAs
+                negative
+                    orient LRAs ydown
+                positive
+                    orient LRAs yup
+
+    """ 
+
+    mySel = cmds.ls(os=1, fl=1, type='joint')
+
+    if type == 'show':
+        state = cmds.getAttr(mySel[0] + '.displayLocalAxis')
+        
+        for jnt in mySel:
+            cmds.setAttr(jnt + '.displayLocalAxis', 1-state)
+
+    if type == 'negative':
+        for jnt in mySel:
+            cmds.joint(jnt, e=1, oj='yxz', secondaryAxisOrient='ydown', zso=1)
+
+    if type == 'positive':
+        for jnt in mySel:
+            cmds.joint(jnt, e=1, oj='yxz', secondaryAxisOrient='yup', zso=1)
+
+    cmds.select(mySel, r=1)
+
+
+def cConnectFinetuneAngle(*args):
+    """
+    connect details_con.adjustAngle --> tip_jnts (lost specific)
+
+    """ 
+
+    baseName = 'headLoop_'
+    conSuffix = '_jnt_half_con'
+    jntSuffix = '_jnt'
+    attrName = 'adjustAngle'
+    '''
+    headLoop_23_0_jnt_half_con.adjustAngle
+    headLoop_23_0_jnt.ry
+    '''
+    cmds.textField('tfAttr', tx=attrName, e=1)
+
+    for i in range(1, 24, 1):
+        for j in range(0, 12, 1):
+            con = baseName + str(i) + '_' + str(j) + conSuffix
+            jnt = baseName + str(i) + '_' + str(j) + jntSuffix
+            cmds.select(con, r=1)
+            cAddAttrib(con, 'double', attrName, 'x', 'x', 0, 'add')
+            cmds.connectAttr(con + '.' + attrName, jnt + '.rx', f=1)
+            print i, j
 
 
 
@@ -292,6 +503,14 @@ def cSkinWhiskers(*args):
 
 
 def cSelectionSet(type, *args):
+    """
+    create selection sets
+
+    Input
+        type:   add, tgl, replace
+
+    """ 
+
     gShelfTopLevel = mel.eval("$tmpVar=$gShelfTopLevel")
     currentTab = cmds.tabLayout(gShelfTopLevel, q=1, st=1)
     setName = cmds.textField('tSelectionSet', tx=1, q=1)
@@ -406,6 +625,7 @@ def cJointsVis(*args):
 
     myJnts = []
     mySel = cmds.ls(sl=1)
+    
     if not mySel:
         myJnts = cmds.ls(type='joint')
     else:
@@ -416,8 +636,10 @@ def cJointsVis(*args):
         state = 2 
 
     for jnt in myJnts:
-        # print jnt
         cmds.setAttr(jnt + '.drawStyle', 2-state)
+
+    cmds.textField('tfFeedback', tx = 'Set jnts vis to ' + str(state), e=1)
+
 
 
 def cLockAndHide(state, attrName, *args):
@@ -484,6 +706,7 @@ def cAddAttrib(selection, attrType, attrName, min, max, dv, state, *args):
         dv:         default value, 'x' for none
         state:      add or remove
     """
+
     defaultValueList = ['ringScale']
 
     # print 'selection:' + str(selection)
@@ -534,10 +757,6 @@ def cSetAttr(field, *args):
                 attrTxt += ' '
 
     cmds.textField(field, tx=attrTxt, e=1)
-
-
-def cConnectAttr(*args):
-    pass
 
 
 def cAddGeoAttribute(*args):
@@ -1046,6 +1265,11 @@ def cSelToJoints(*args):
 
 
 def cJSChainFromJnts(*args):
+    """
+    Duplicate joint chain with _JS ending
+    
+    """
+
     jntList = []
     mySel = cmds.ls(os=1, fl=1)
 
@@ -1162,6 +1386,11 @@ def cJntInCenter(*args):
 
 
 def cJntFromVertex(*args):
+    """
+    Create a joint from every selected vertex
+
+    """
+
     mySel = cmds.ls(os=1, fl=1)
 
     for i in range(0, len(mySel), 1):
@@ -1172,12 +1401,63 @@ def cJntFromVertex(*args):
         jnt = cmds.joint(p=(pos[0], pos[1], pos[2]), n=baseName + '_' + str(i) + '_jnt')
 
 
+def cOrientTipJnts(type, *args):
+    """
+    Orient joints 
 
-def cHalfwayJnt(directin, *args):
+    Flags:
+        type:           default
+                            orient selection
+                        parent
+                            duplicate last joint and orient child
+
+    """
+
+    dad = ''
+    mySel = cmds.ls(os=1, type='joint')
+    cmds.select(clear=1)
+
+    if type == 'default':
+        for jnt in mySel:
+            cmds.joint(jnt, oj='yxz', secondaryAxisOrient='zdown', zso=1, e=1)
+
+        cmds.select(mySel, r=1)
+
+    if type == 'parent':
+        for jnt in mySel:
+            dad = cmds.listRelatives(jnt, p=1, type='joint')   
+            if dad:
+                cmds.select(clear=1)
+                posDad = cmds.xform(dad, translation=1, ws=1, q=1)
+                posJnt = cmds.xform(jnt, translation=1, ws=1, q=1)
+
+                doublePosX = (posJnt[0] - posDad[0])*2 + posDad[0]
+                doublePosY = (posJnt[1] - posDad[1])*2 + posDad[1]
+                doublePosZ = (posJnt[2] - posDad[2])*2 + posDad[2]
+
+                cmds.select(jnt, r=1)
+                doubleJnt = cmds.joint(p=(doublePosX, doublePosY, doublePosZ), n=jnt + '_double')
+                cmds.select(jnt)
+                cmds.joint(jnt, oj='yxz', secondaryAxisOrient='zdown', zso=1, e=1)
+
+                # cmds.delete(doubleJnt)
+
+
+
+
+
+
+def cHalfwayJnt(action, *args):
     """
     Place an additional halfway joint 
 
+    action:     fix
+
     """
+    splitAtPos = cmds.intField('iDivideChainAtPosition', v=1, q=1)
+    divider = float(100.0/splitAtPos)
+    if action == 'fix':
+        divider = 2
 
     mySel = cmds.ls(sl=1, type='joint')
     for jnt in mySel:
@@ -1187,9 +1467,9 @@ def cHalfwayJnt(directin, *args):
             posDad = cmds.xform(dad, translation=1, ws=1, q=1)
             posJnt = cmds.xform(jnt, translation=1, ws=1, q=1)
 
-            halfPosX = (posJnt[0] - posDad[0])/2 + posDad[0]
-            halfPosY = (posJnt[1] - posDad[1])/2 + posDad[1]
-            halfPosZ = (posJnt[2] - posDad[2])/2 + posDad[2]
+            halfPosX = (posJnt[0] - posDad[0])/divider + posDad[0]
+            halfPosY = (posJnt[1] - posDad[1])/divider + posDad[1]
+            halfPosZ = (posJnt[2] - posDad[2])/divider + posDad[2]
 
             cmds.select(dad, r=1)
             halfJnt = cmds.joint(p=(halfPosX, halfPosY, halfPosZ), n=jnt + '_half')
@@ -1203,6 +1483,8 @@ def cHalfwayJnt(directin, *args):
             cmds.setAttr(jnt + '.jointOrientY', ori[0][1])
             cmds.setAttr(jnt + '.jointOrientZ', ori[0][2])
 
+    cmds.select(mySel, r=1)        
+
 
 
 
@@ -1213,6 +1495,7 @@ def cHalfwayJnt(directin, *args):
 def cJntsFromSelection(parent, *args):
     """
     To be documented
+
     """
 
     pos = []
@@ -1272,8 +1555,23 @@ def cAdjustPivot(*args):
     # move -rpr 0 0 0 polyToCurve1_center_jnt.scalePivot polyToCurve1_center_jnt.rotatePivot ;
 
 
+def cParentCubeToJnt(*args):
+    """
+    parent cubes under selection
+    
+    """
 
+    mySel = cmds.ls(os=1, fl=1)
+    cubeSel = []
+    for sel in mySel:
+        cube = cmds.polyCube(n=sel + '_CUBE')
+        cmds.parent(cube[0], sel)
+        cmds.setAttr(cube[0] + '.translate', 0 ,0 ,0)
+        cmds.setAttr(cube[0] + '.rotate', 0 ,0 ,0)
+        cmds.setAttr(cube[0] + '.scale', 1 ,1 ,1)
+        cubeSel.append(cube[0])
 
+    cmds.select(cubeSel, r=1)
 
 
 def cCtrlSetup(ctrlShape, *args):
@@ -1284,6 +1582,7 @@ def cCtrlSetup(ctrlShape, *args):
     Input
         ctrlShape:  "cube", "nail" or "circle"
                     Chosen via "Lost in space" UI
+
     """
 
     mySel = cmds.ls(os=1, fl=1)
@@ -1514,11 +1813,11 @@ def cConnectLost(attrName, *args):
                 counter = splits[1]
                 if not counter == 1:
                     bc = cmds.createNode('blendColors', n='bc_volume' + counter)
-                    cmds.connectAttr(mainCon + '.keepVolume', bc + '.blender')
+                    cmds.connectAttr(mainCon + '.keepVolume', bc + '.blender', f=1)
 
-                    cmds.connectAttr('jnt_' + counter + '_JS.scaleX', bc + '.color1R')
-                    cmds.connectAttr('jnt_' + counter + '_JS.scaleY', bc + '.color1G')
-                    cmds.connectAttr('jnt_' + counter + '_JS.scaleZ', bc + '.color1B')
+                    cmds.connectAttr('jnt_' + counter + '_JS.scaleX', bc + '.color1R', f=1)
+                    cmds.connectAttr('jnt_' + counter + '_JS.scaleY', bc + '.color1G', f=1)
+                    cmds.connectAttr('jnt_' + counter + '_JS.scaleZ', bc + '.color1B', f=1)
 
                     cmds.setAttr(bc + '.color2R', 1)
                     cmds.setAttr(bc + '.color2G', 1)
@@ -1547,8 +1846,8 @@ def cConnectLost(attrName, *args):
             cmds.setAttr(mult + '.input2X', .01)
             cmds.setAttr(mult + '.operation', 1)
 
-            cmds.connectAttr(sel + '.' + attrName, mult + '.input1X')
-            cmds.connectAttr(mult + '.outputX', splits[0] + '_' + counter + '_center_grp.tx')
+            cmds.connectAttr(sel + '.' + attrName, mult + '.input1X', f=1)
+            cmds.connectAttr(mult + '.outputX', splits[0] + '_' + counter + '_center_grp.tx', f=1)
 
             cmds.textField('tfFeedback', tx = 'Contract added', e=1) 
 
@@ -1562,9 +1861,9 @@ def cConnectLost(attrName, *args):
 
             drivenList = cmds.ls(str(baseName) + 'center_grp', type='transform')
             for driven in drivenList: 
-                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleX')
-                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleY')
-                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleZ')
+                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleX', f=1)
+                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleY', f=1)
+                cmds.connectAttr(sel + '.' + attrName, driven + '.scaleZ', f=1)
 
             cmds.textField('tfFeedback', tx = 'Ring Scale added', e=1) 
 
@@ -1576,7 +1875,7 @@ def cConnectLost(attrName, *args):
 
             drivenList = cmds.ls(str(baseName) + '*_half_con', type='transform')
             for driven in drivenList: 
-                cmds.connectAttr(sel + '.' + attrName, driven + '.v')
+                cmds.connectAttr(sel + '.' + attrName, driven + '.v', f=1)
 
             cmds.textField('tfFeedback', tx = 'Details added', e=1) 
             
@@ -1957,12 +2256,60 @@ def cCreateFollicle(mesh, baseName, counter, u, v, posBase, posTip, *args):
 
 
 def cGetVertexID(field, *args):
+    """
+    Get Vertex ID and fill in UI
+    
+    Flags:          field
+                        UI filed to be filled
+    """
+
     curSel = cmds.ls(sl=1, fl=1)[0]
     id = int(curSel.split('[')[1].split(']')[0])
     cmds.intField(field, v=id, e=1)
 
 
+def cGetVerticesID(field, *args):
+    """
+    Get multiple Vertex IDs and fill in UI
+    
+    Flags:          field
+                        UI filed to be filled
+    """
+
+    vertexList = ''
+    curSel = cmds.ls(sl=1, fl=1)
+    for sel in curSel:
+        id = int(sel.split('[')[1].split(']')[0])
+        vertexList += str(id) + ' '
+
+    cmds.textField(field, tx=vertexList, e=1)
+
+
+def cSelectVerticesID(field, *args):
+    """
+    Select Vertices from UI on selected object
+    
+    Flags:          field
+                        UI filed to be filled
+    """
+    
+    curSel = cmds.ls(sl=1, fl=1)
+    sel = curSel[0]
+    verticesID = cmds.textField(field, tx=1, q=1)
+    vertexList = verticesID.split(' ')    
+    
+    cmds.select(clear=1)
+
+    for i in range(0, len(vertexList)-1, 1):
+        cmds.select(sel + '.vtx[' + str(vertexList[i]) + ']', add=1)
+
+
 def cEnableTipVertex(*args):
+    """
+    Enable UI for tip vertex
+
+    """
+
     state = cmds.checkBox('cbEnableTipVertex', v=1, q=1)
     if state == 1:
         cmds.intField('iNthTipVertexId', ed=state, e=1, bgc=(0,0,0))
@@ -2023,7 +2370,7 @@ def cSelNthVertex(field, *args):
 
 def cOrientJnts(jntBase, jntTip, up, *args):
     """
-    Orient joints to an up vector
+    Orient joints to an up upVector
     """
 
     jntTip =  cmds.parent(jntTip, w=1)[0]
@@ -2031,6 +2378,7 @@ def cOrientJnts(jntBase, jntTip, up, *args):
     cmds.setAttr(jntBase + '.rotate', 0,0,0)
 
     aimConstr = cmds.aimConstraint(jntTip, jntBase, worldUpType="object", worldUpObject=up, aimVector=(1,0,0), upVector=(0,1,0))
+    # aimConstr = cmds.aimConstraint(jntTip, jntBase, worldUpType="vector", worldUpObject=(0,0,1), aimVector=(1,0,0), upVector=(0,1,0))
     # aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject locator1;
     cmds.delete(aimConstr)
 
@@ -2041,6 +2389,12 @@ def cOrientJnts(jntBase, jntTip, up, *args):
 
 
 def cFindClosestBatch(*args):
+    """
+    Find the closest point on mesh from the vertex
+    place a joint 
+    
+    """
+
     batchIndex = cmds.intField('iIndex', v=1, q=1)
     curSel = cmds.ls(os=1)
     amount = int(len(curSel))
@@ -2063,36 +2417,221 @@ def cFindClosestBatch(*args):
     cmds.select(curSel, r=1)
 
 
-def cBatchSkin(prefix, *args):
-    bindJnts = []
-    curSel = cmds.ls(os=1)
-
-    for sel in curSel:
-        if prefix == 'identical':
-            bindJnts = cmds.ls(sel + '*' + 'tip_jnt')
-        if prefix == 'differs':
-            noNmSpc = sel.split(':')[-1]
-            bindJnts = cmds.ls(noNmSpc + '*' + 'tip_jnt')
-
-        if len(bindJnts) == 1:
-            print sel
-            print bindJnts[0]
-            cmds.skinCluster(sel, bindJnts[0], tsb=1)
-
-
-
-def cBatchSkin_OLD(*args):
-    curSel = cmds.ls(os=1)
+def cDupBaseJnt(*args):
+    """
+    Duplicate base jnt to base0 jnt (lost specific)
     
+    """
+
+    curSel = cmds.ls(os=1, fl=1)
     for sel in curSel:
-        bindJnts = cmds.ls(sel + '*' + 'tip_jnt')
-        if len(bindJnts) == 1:
-            print sel
-            print bindJnts[0]
-            cmds.skinCluster(sel, bindJnts[0], tsb=1)
+        base_name = sel.replace('FOL', 'base_jnt')
+        base0_name = sel.replace('FOL', 'base0_jnt')
+        dup = cmds.duplicate(base_name, n=base0_name, rc=1)
+        childs = cmds.listRelatives(dup, c=1)
+        cmds.delete(childs)
+        cmds.parent(dup[0], sel)
+
+
+
+def cBatchSkin(prefix, numJoints, *args):
+    """
+    Batch skin objects
+    according to object name
+    
+    Flags:          
+        prefix          identical
+                            jnts named like object
+                        differs
+                            jnts named like object WITHOUT namespace
+
+        numJoints       1
+                            just one joint
+                        2
+                            base and tip joint
+                            skin weight baseJnt: vtx[0:7]
+
+    """
+
+    print 'cBatchSkin'
+    bindJnts = []
+    bindJntsTip = []
+    bindJntsBase = []
+    curSel = cmds.ls(os=1, fl=1)
+
+    if numJoints == 1:
+        for sel in curSel:
+            if prefix == 'identical':
+                bindJnts = cmds.ls(sel + '*' + 'tip_jnt')
+            if prefix == 'differs':
+                noNmSpc = sel.split(':')[-1]
+                bindJnts = cmds.ls(noNmSpc + '*' + 'tip_jnt')
+
+            if len(bindJnts) == 1:
+                cmds.skinCluster(sel, bindJnts[0], tsb=1)
+
+    if numJoints == 2:
+        for sel in curSel:
+            numVertices = cmds.polyEvaluate(sel, v=1)
+
+            if prefix == 'identical':
+                bindJntsTip = cmds.ls(sel + '*' + 'tip_jnt')
+                bindJntsBase = cmds.ls(sel + '*' + 'base0_jnt')
+            if prefix == 'differs':
+                noNmSpc = sel.split(':')[-1]
+                bindJntsTip = cmds.ls(noNmSpc + '*' + 'tip_jnt')
+                bindJntsBase = cmds.ls(noNmSpc + '*' + 'base0_jnt')
+
+            if bindJntsTip and bindJntsBase:
+                skinCL = cmds.skinCluster(sel, bindJntsBase[0], bindJntsTip[0], tsb=1)
+
+                cSetWeights(skinCL[0], sel, numVertices, bindJntsBase[0], bindJntsTip[0])
+
+                # cmds.skinPercent(skinCL[0], sel + '.vtx[0:' + str(numVertices-1) + ']', tv=(str(bindJntsTip[0]), 1))
+                # cmds.skinPercent(skinCL[0], sel + '.vtx[0:7]', tv=(str(bindJntsBase[0]), 1))
+
+
+def cBatchSkinSpecial(prefix, numJoints, *args):
+    """
+    Special batch skin objects
+    according to object name
+    
+    Flags:          
+        prefix          identical
+                            jnts named like object
+                        differs
+                            jnts named like object WITHOUT namespace
+
+        numJoints       1
+                            just one joint
+                        2
+                            base and tip joint
+                            skin weight baseJnt: according to vertx list in UI
+
+                            
+    """
+
+    print 'cBatchSkin'
+    verticesID = cmds.textField('tfVerticesID', tx=1, q=1)
+    vertexList = verticesID.split(' ')
+    bindJnts = []
+    bindJntsTip = []
+    bindJntsBase = []
+    curSel = cmds.ls(os=1, fl=1)
+
+    # lam_01:fangLarge_001_geo
+    # lam_01:fangLarge_hi_001_geo
+
+    if numJoints == 2:
+        for sel in curSel:
+            cmds.select(clear=1)
+            
+            splits      = sel.split(':')[-1].split('_')
+            baseName    = splits[0] + '_' + splits[1]  # fangLarge_hi
+            no_hi       = splits[0]
+
+            jntName = sel.replace(baseName, no_hi)
+            numVertices = cmds.polyEvaluate(sel, v=1)
+
+            if prefix == 'identical':
+                bindJntsTip = cmds.ls(jntName + '*' + 'tip_jnt')
+                bindJntsBase = cmds.ls(jntName + '*' + 'base0_jnt')
+            if prefix == 'differs':
+                noNmSpc = jntName.split(':')[-1]
+                bindJntsTip = cmds.ls(noNmSpc + '*' + 'tip_jnt')
+                bindJntsBase = cmds.ls(noNmSpc + '*' + 'base0_jnt')
+
+            if bindJntsTip and bindJntsBase:
+                skinCL = cmds.skinCluster(sel, bindJntsBase[0], bindJntsTip[0], tsb=1)
+
+                cSetWeights(skinCL[0], sel, numVertices, bindJntsBase[0], bindJntsTip[0])
+
+                cmds.skinPercent(skinCL[0], sel + '.vtx[0:' + str(numVertices-1) + ']', tv=(str(bindJntsTip[0]), 1))
+
+                for i in range(0, len(vertexList)-1, 1):
+                    cmds.select(sel + '.vtx[' + str(vertexList[i]) + ']', add=1)
+                    
+                curSel = cmds.ls(sl=1)
+                cmds.skinPercent(skinCL[0], curSel, tv=(str(bindJntsBase[0]), 1))
+
+
+def cSetWeights(skinCluster, object, numVertices, base, tip, *args):
+    """
+    Set skin weights
+    
+    Flags:          
+        skinCluster          
+        object
+        numVertices         num of vertices
+        base                base joint
+        tip                 tip joint
+                        
+
+                            
+    """
+
+    print base, tip
+    cmds.skinPercent(skinCluster, object + '.vtx[0:' + str(numVertices-1) + ']', tv=(str(base), 1))
+    cmds.skinPercent(skinCluster, object + '.vtx[0:7]', tv=(str(tip), 1))
+
+
+def cSmoothFlood(*args):
+    '''
+    Smooth flood all influences
+    @param geometry: The geometry connected to the skinCluster to smooth
+    @type geometry: str
+    @param iterations: Number of smooth iterations
+    @type iterations: int
+    '''
+    skinCluster = cmds.textField('tfSkinCluster', tx=1, q=1)
+    iterations = cmds.intField('ifSmoothIterations', v=1, q=1)
+
+    # Get current tool
+    currentTool = cmds.currentCtx()
+    
+    # Select geometry
+    # geometry = glTools.utils.deformer.getAffectedGeometry(skinCluster).keys()
+    # cmds.select(geometry)
+    
+    # Get skinCluster influence list
+    influenceList = cmds.skinCluster(skinCluster,q=True,inf=True)
+    
+    # Unlock influence weights
+    for influence in influenceList: cmds.setAttr(influence+'.lockInfluenceWeights', 0)
+    
+    # Initialize paint context
+    skinPaintTool = 'artAttrSkinContext'
+    if not cmds.artAttrSkinPaintCtx(skinPaintTool,ex=True):
+        cmds.artAttrSkinPaintCtx(skinPaintTool,i1='paintSkinWeights.xpm',whichTool='skinWeights')
+    cmds.setToolTo(skinPaintTool)
+    cmds.artAttrSkinPaintCtx(skinPaintTool,edit=True,sao='smooth')
+    
+    # Smooth Weights
+    for i in range(iterations):
+        print(skinCluster+': Smooth Iteration - '+str(i+1))
+        for influence in influenceList:
+            # Lock current influence weights
+            # print influence
+            cmds.setAttr(influence + '.lockInfluenceWeights', 1)
+            # Smooth Flood
+
+            mel.eval('artSkinSelectInfluence ("artAttrSkinPaintCtx ", "' + influence + '")')
+            cmds.artAttrSkinPaintCtx(skinPaintTool,e=True,clear=True)
+            # Unlock current influence weights
+            cmds.setAttr(influence+'.lockInfluenceWeights',0)
+    
+    # Reset current tool
+    cmds.setToolTo(currentTool)
+
+
 
 
 def cRemoveFromNmSpc(*args):
+    """
+    Remove pseudo name space from selection
+
+    """
+
     mySel = cmds.ls(sl=1, fl=1)
     # nmSpc = cmds.textField('tfNmSpc', tx=1, q=1)
 
@@ -2144,23 +2683,23 @@ if cmds.window('win_tkLostInSpaceHelper', exists=1):
 myWindow = cmds.window('win_tkLostInSpaceHelper', t=('Lost In Space Helper ' + ver), s=1, wh=(windowStartHeight, windowStartWidth ))
 
 cmds.columnLayout(adj=1, bgc=(colUI2[0], colUI2[1], colUI2[2]))
-cmds.rowColumnLayout(nc=9, cw=[(1, 40), (2, 40), (3, 55), (4, 55), (5, 55), (6, 55), (7, 45), (8, 75), (9, 20)])
+cmds.rowColumnLayout(nc=9, cw=[(1, 40), (2, 40), (3, 55), (4, 55), (5, 55), (6, 65), (7, 55), (8, 55), (9, 20)])
 # cmds.rowColumnLayout(nc=8, cw=[(1, 55), (2, 55), (3, 55), (4, 55), (5, 55), (6, 55), (7, 55), (8, 55)])
 cmds.button(l='Down', c=partial(cSelectLevel, 'selectForMe', 1, 0), bgc=(colYellow[0], colYellow[1], colYellow[2]))
 cmds.button(l='Up', c=partial(cWalkUp), bgc=(colYellow[0], colYellow[1], colYellow[2]))
-cmds.button(l='Tgl Jnts', c=partial(cJointsVis), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Tgl Jnts', c=partial(cJointsVis), bgc=(colRed[0], colRed[1], colRed[2]))
 cmds.button(l='Jnt Size', c=partial(cJointSize), bgc=(colBlue[0], colBlue[1], colBlue[2]))
 cmds.button(l='To Jnts', c=partial(cSelToJoints), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='OFF', c=partial(cAddNullGrp), bgc=(colBlue[0], colBlue[1], colBlue[2]))
-cmds.button(l='Order', c=partial(cReOrder), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Order', c=partial(cReOrder), bgc=(colYellow[0], colYellow[1], colYellow[2]))
 # cmds.button(l='Empty Grps', c=partial(cRemoveEmptyTransforms), bgc=(colRed[0], colRed[1], colRed[2]))
-cmds.button(l='Foll', c=partial(cHideType, 'follicle'), bgc=(colYellow[0], colYellow[1], colYellow[2]))
-cmds.button(l='SE', c=partial(cClearSE), bgc=(colRed[0], colRed[1], colRed[2]))
+cmds.button(l='Foll', c=partial(cHideType, 'follicle'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='OFF GRP', c=partial(cAddNullGrp), bgc=(colRed3[0], colRed3[1], colRed3[2]))
+cmds.button(l='SE', c=partial(cClearSE), bgc=(colRed4[0], colRed4[1], colRed4[2]))
 cmds.setParent(top=1)
 
 
 
-cmds.columnLayout(adj=1, bgc=(colUI[0], colUI[1], colUI[2]))
+cmds.columnLayout(adj=1, bgc=(colUI2[0], colUI2[1], colUI2[2]))
 cmds.frameLayout('flRigSetup', l='RIG SETUP', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 cmds.columnLayout('layAdj', adj=1)
 
@@ -2177,7 +2716,6 @@ cmds.button(l='Crv With New Start', c=partial(cCutAsStart), bgc=(colYellow4[0], 
 
 cmds.setParent('layAdj')
 cmds.frameLayout('flJntsOnCurves', l='--------------- JOINTS ON CURVES ---------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-# cmds.columnLayout(adj=1)
 cmds.rowColumnLayout(nc=4, cw=[(1, 55), (2, 95), (3, 110), (4, 180)])
 cmds.intField('fBonesNumber', v=8) 
 cmds.button(l='... Just Place', c=partial(cBonesOnCurve, 'bonesOnly'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
@@ -2212,7 +2750,13 @@ cmds.setParent('layAdj')
 cmds.frameLayout('flJntOperations', l='--------------- MAKE JOINTS -------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.rowColumnLayout(nc=2, cw=[(1, 130), (2, 310)])
 cmds.button(l='JS Chain From Chain', c=partial(cJSChainFromJnts), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-cmds.button(l='Halfway Joint Up', c=partial(cHalfwayJnt, 'up'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Split Joint At Half', c=partial(cHalfwayJnt, 'fix'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+
+cmds.setParent('layAdj')
+cmds.rowColumnLayout(nc=3, cw=[(1, 130), (2, 280), (3,30)])
+cmds.text(' ', bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Split Joint At Position (Percent)', c=partial(cHalfwayJnt, 'read'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.intField('iDivideChainAtPosition', v=95, min=1, max=99, bgc=(0,0,0))
 
 cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=3, cw=[(1, 130), (2, 180), (3, 130)])
@@ -2220,7 +2764,19 @@ cmds.button(l='Jnts To Chain', c=partial(cJntsToChain, 'parent'), bgc=(colYellow
 cmds.button(l='Jnts From Sel And Parent', c=partial(cJntsFromSelection, 1), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Objs To New Chain', c=partial(cObjToChain, 'new'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='Jnts From Vertices', c=partial(cJntFromVertex, 'new'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.text(' ', bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.text(' ', bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.setParent('..')
+
+
+cmds.setParent('layAdj')
+cmds.frameLayout('flOrientJnts', l='--------------- ORIENT TIP JOINTS -------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.rowColumnLayout(nc=4, cw=[(1, 200), (2, 90), (3, 90), (4, 60)])
+cmds.button(l='Orient Sel Jnts To Parent', c=partial(cOrientTipJnts, 'parent'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='LRA positive', c=partial(cLRA, 'positive'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='LRA negative', c=partial(cLRA, 'negative'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='LRA ', c=partial(cLRA, 'show'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+
 
 
 cmds.setParent('layAdj')
@@ -2248,10 +2804,11 @@ cmds.floatField('fScaleIcon', v=.1, ed=1, pre=2, bgc=(0,0,0))
 
 cmds.setParent('layAdj')
 cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
-cmds.button(l='Sel Under New Ctrl (guide cons)', c=partial(cAddCtrlToSel,'sel_under_ctrl', 'nail'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
-cmds.button(l='Parent Ctrl To Sel (half cons)', c=partial(cAddCtrlToSel,'parent', 'cube'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
+cmds.button(l='Sel Under New Ctrl (guide cons)', c=partial(cAddCtrlToSel,'sel_under_ctrl', 'nail'), bgc=(colRed3[0], colRed3[1], colRed3[2]))
+cmds.button(l='Parent Ctrl To Sel (half cons)', c=partial(cAddCtrlToSel,'parent', 'cube'), bgc=(colRed4[0], colRed4[1], colRed4[2]))
 
 cmds.button(l='Add Ctrl At Sel', c=partial(cAddCtrlToSel, 'add', 'cube'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.text(' ', bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 
 
 cmds.setParent('layAdj')
@@ -2318,7 +2875,24 @@ cmds.setParent('layAdjTeeth')
 # cmds.rowColumnLayout(nc=3, cw=[(1, 90), (2, 90), (3, 260)])
 cmds.button(l='Batch - Same Vtx Count / Order Required!', c=partial(cFindClosestBatch), bgc=(colRed[0], colRed[1], colRed[2]))
 
+cmds.setParent('layAdjTeeth')
+cmds.button(l='Duplicate Base Jnt (Select FOL)', c=partial(cDupBaseJnt), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
+cmds.setParent('layAdjTeeth')
+cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
+cmds.button(l='Batch Skin To Base (ident)', c=partial(cBatchSkin, 'identical', 1), bgc=(colUI5[0], colUI5[1], colUI5[2]))
+cmds.button(l='Batch Skin To Base/Tip (ident)', c=partial(cBatchSkin, 'identical', 2), bgc=(colUI2[0], colUI2[1], colUI2[2]))
+cmds.button(l='Batch Skin To Base (geo differs)', c=partial(cBatchSkin, 'differs', 1), bgc=(colUI5[0], colUI5[1], colUI5[2]))
+cmds.button(l='Batch Skin To Base/Tip (geo differs)', c=partial(cBatchSkin, 'differs', 2), bgc=(colUI2[0], colUI2[1], colUI2[2]))
+# cmds.text(' ', bgc=(colUI5[0], colUI5[1], colUI5[2]))
+# cmds.button(l='Set Weights On Base/Tip', c=partial(cSetWeights, 'baseTip'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+cmds.setParent('layAdjTeeth')
+cmds.rowColumnLayout(nc=4, cw=[(1, 90), (2, 100), (3,30), (4,220)])
+cmds.button(l='Get Vertices >>', c=partial(cGetVerticesID, 'tfVerticesID'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
+cmds.textField('tfVerticesID', bgc=(0,0,0))
+cmds.button(l='Sel', c=partial(cSelectVerticesID, 'tfVerticesID'), bgc=(colUI5[0], colUI5[1], colUI5[2]))
+cmds.button(l='Batch Skin To Base/Tip (geo differs)', c=partial(cBatchSkinSpecial, 'differs', 2), bgc=(colUI2[0], colUI2[1], colUI2[2]))
 
 
 
@@ -2337,10 +2911,6 @@ cmds.button(l='Delete Attr', c=partial(cAddLostAttr, 'any', 'remove'), bgc=(colR
 
 
 
-# cmds.button(l='Connect To >>', c=partial(cSetAttr, 'tfToAttr'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-# cmds.textField('tfToAttr', tx='', bgc=(0,0,0))
-# cmds.button(l='Connect', c=partial(cConnectAttr), bgc=(colGreen[0], colGreen[1], colGreen[2]))
-
 cmds.setParent('layAdjAttr')
 cmds.frameLayout('fPresets', l='--------------- LOST CONNECTIONS --------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.rowColumnLayout(nc=3, cw=[(1, 110), (2, 110), (3, 220)])
@@ -2349,9 +2919,6 @@ cmds.button(l='Details', c=partial(cConnectLost, 'details'), bgc=(colYellow2[0],
 cmds.button(l='Add Geo Chooser', c=partial(cAddGeoAttribute), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 
 
-# cmds.setParent('layAdjAttr')
-# cmds.button(l='nmSpc >>', c=partial(cFillField, 'tfNmSpc'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-# cmds.textField('tfNmSpc', tx='', bgc=(0,0,0))
 cmds.button(l='Contract', c=partial(cConnectLost, 'contract'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
 cmds.button(l='Keep Volume', c=partial(cConnectLost, 'keepVolume'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
 cmds.button(l='Remove NmSpc From Selection', c=partial(cRemoveFromNmSpc), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
@@ -2361,14 +2928,14 @@ cmds.setParent('layAdjAttr')
 cmds.frameLayout('fCreateNodes', l='--------------- CREATE MULTIPLE NODES AND CONNECT --------------------', fn='smallPlainLabelFont', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.rowColumnLayout(nc=4, cw=[(1, 110), (2, 110), (3, 110), (4, 110)])
 cmds.button(l='Node Type >>', c=partial(cFillField, 'tfNodeType'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.textField('tfNodeType', tx='multiplyDivide', ed=0, bgc=(0,0,0))
+cmds.textField('tfNodeType', tx='multiplyDivide', ed=1, bgc=(0,0,0))
 cmds.button(l='New Name >>', c=partial(cFillField, 'tfNodeNewName'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
 cmds.textField('tfNodeNewName', tx='contractMult', bgc=(0,0,0))
 
 cmds.button(l='From Attr >>', c=partial(cSetAttr, 'tfFromAttr'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.textField('tfFromAttr', tx='contract', ed=0, bgc=(0,0,0))
+cmds.textField('tfFromAttr', tx='contract', ed=1, bgc=(0,0,0))
 cmds.button(l='To Attr >>', c=partial(cSetAttr, 'tfToAttr'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.textField('tfToAttr', tx='i1x', ed=0, bgc=(0,0,0))
+cmds.textField('tfToAttr', tx='i1x', ed=1, bgc=(0,0,0))
 
 cmds.setParent('layAdjAttr')
 cmds.rowColumnLayout(nc=3, cw=[(1, 110), (2, 110), (3, 220)])
@@ -2441,6 +3008,52 @@ cmds.button(l='Incr', c=partial(cRandomBatch, 'increment'), bgc=(colYellow2[0], 
 
 
 
+
+cmds.setParent(top=1)
+cmds.frameLayout('flMisc', l='MISC HELPER', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
+cmds.columnLayout('layMisc', adj=1)
+
+cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
+cmds.button(l='cvWrap (Last: Wrapper)', c=partial(cCvWrap, 'create'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Delete cvWraps', c=partial(cCvWrap, 'delete'), bgc=(colRed5[0], colRed5[1], colRed5[2]))
+
+cmds.setParent('layMisc')
+cmds.rowColumnLayout(nc=3, cw=[(1, 120), (2, 180), (3, 140)])
+cmds.button(l='Multi Parent', c=partial(cMultiParent), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Multi BlendShape', c=partial(cBlendShape), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Skin Whiskers', c=partial(cSkinWhiskers), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+cmds.setParent('layMisc')
+cmds.rowColumnLayout(nc=3, cw=[(1, 220), (2, 220)])
+cmds.button(l='Multi Copy Skin Weights (source last)', c=partial(cCopySkinWeights, 'last'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.button(l='Multi Copy Skin Weights (123..., 123...)', c=partial(cCopySkinWeights, 'each'), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+
+
+cmds.setParent('layMisc')
+cmds.button(l='connect body to staticBody', c=partial(cConnectAttr), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+
+cmds.setParent('layMisc')
+cmds.rowColumnLayout(nc=5, cw=[(1, 90), (2, 90), (3, 90), (4,30), (5,140)])
+cmds.button(l='Skin Cluster >>', c=partial(cGetSkinCluster), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.textField('tfSkinCluster', bgc=(0,0,0))
+cmds.text('Iterations', bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+cmds.intField('ifSmoothIterations', v=1, min=1, max=10)
+cmds.button(l='Smooth Skin Weights', c=partial(cSmoothFlood), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
+
+
+cmds.setParent('layMisc')
+cmds.rowColumnLayout(nc=2, cw=[(1, 220), (2, 220)])
+cmds.button(l='Match Orient (second like first)', c=partial(cMatchOrient, 'secondLikeFirst'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
+cmds.button(l='Match Orient (child like parent)', c=partial(cMatchOrient, 'childLikeParent'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
+cmds.button(l='Back To Orig Shape On Reference', c=partial(cBackToOrigShape, 'reference'), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
+cmds.button(l='Back To Orig Shape', c=partial(cBackToOrigShape, 'original'), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Preview Cubes Under Joints', c=partial(cParentCubeToJnt), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+cmds.button(l='Finetune Angle', c=partial(cConnectFinetuneAngle), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
+
+
+
+
 cmds.setParent('layAdj')
 cmds.setParent(top=1)
 cmds.frameLayout('flAttributes', l='LOCK AND FREE ATTRIBUTES', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
@@ -2495,26 +3108,6 @@ cmds.button(l='vis', c=partial(cLockAndHide, 1, 'v'), bgc=(colUI6[0], colUI6[1],
 
 
 
-
-cmds.setParent(top=1)
-cmds.frameLayout('flMisc', l='MISC HELPER', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=0, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
-cmds.columnLayout('layMisc', adj=1)
-
-cmds.rowColumnLayout(nc=3, cw=[(1, 120), (2, 180), (3, 140)])
-cmds.button(l='Batch Skin (identical)', c=partial(cBatchSkin, 'identical'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
-cmds.button(l='Batch Skin (geo differs from jnts)', c=partial(cBatchSkin, 'differs'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
-cmds.button(l='cvWrap (Last: Wrapper)', c=partial(cCvWrap), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='Multi Parent', c=partial(cMultiParent), bgc=(colYellow5[0], colYellow5[1], colYellow5[2]))
-cmds.button(l='Multi BlendShape', c=partial(cBlendShape), bgc=(colYellow2[0], colYellow2[1], colYellow2[2]))
-cmds.button(l='Skin Whiskers', c=partial(cSkinWhiskers), bgc=(colYellow4[0], colYellow4[1], colYellow4[2]))
-
-cmds.setParent('layMisc')
-cmds.rowColumnLayout(nc=3, cw=[(1, 220), (2, 220)])
-cmds.button(l='Match Orient (second like first)', c=partial(cMatchOrient, 'secondLikeFirst'), bgc=(colUI2[0], colUI2[1], colUI2[2]))
-cmds.button(l='Match Orient (child like parent)', c=partial(cMatchOrient, 'childLikeParent'), bgc=(colUI4[0], colUI4[1], colUI4[2]))
-
-
-
 cmds.setParent(top=1)
 cmds.frameLayout('flSelectionSets', l='SELECTION SETS', fn='smallPlainLabelFont', bgc=(colUI2[0], colUI2[1], colUI2[2]), cll=1, cl=1, cc=partial(cShrinkWin, 'win_tkLostInSpaceHelper'))
 
@@ -2537,3 +3130,4 @@ cmds.textField('tfFeedback', tx='', ed=0, bgc=(colUI1[0], colUI1[1], colUI1[2]))
 
 cmds.showWindow(myWindow)
 cmds.window(myWindow, w=440, h=20, e=1)
+
